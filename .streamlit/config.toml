@@ -1,0 +1,11 @@
+# IBM Carbon Design System(프로젝트 루트 DESIGN.md) 기준 팔레트.
+# 폰트는 앱 내 CSS에서 Pretendard로 별도 오버라이드한다(이 font 값은 로드 전 fallback).
+[theme]
+primaryColor = "#0f62fe"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f4f4f4"
+textColor = "#161616"
+font = "sans serif"
+
+[server]
+headless = true

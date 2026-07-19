@@ -1,0 +1,50 @@
+# === Python ===
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# === Streamlit ===
+.streamlit/secrets.toml
+
+# === 환경변수 / 시크릿 ===
+.env
+.env.*
+*.pem
+*.key
+
+# === 실행 시 생성되는 산출물 (재실행하면 다시 만들어지므로 git 추적 제외) ===
+# scan_accounts.py / segment_accounts.py / track_batch.py / write_results.py 등이
+# /output 아래에 생성하는 모든 산출물(계정 마스터, 세그멘테이션, 배치별 JSON/엑셀,
+# 배치 로그, 확정 결과, 다운로드용 최종 엑셀). 샘플 실행 결과를 보여주고 싶으면
+# docs/screenshots/ 스크린샷이나 docs/project_summary.md 안의 발췌로 대신한다.
+/output/*
+!/output/README.md
+
+# Phase 0.5 재확인/PoC 실행 시 루트에 남는 부산물
+llm_verdicts.json
+
+# 신규 배치 업로드 시 자동 생성되는 이전 데이터 백업(타임스탬프 폴더) — 로컬 복구용일 뿐
+# 리포지토리에 포함할 필요 없음
+/output_backup_*/
+
+# Streamlit 앱 실행 로그(직접 리다이렉트해서 만든 디버그 로그 등)
+*.log
+
+# === 실 데이터 관련 안전장치 ===
+# 이 프로젝트는 가상/샘플 데이터만 다룬다(input/departments/README.md 참조).
+# 실 고객사 데이터나 마스킹 전 원본 자료가 로컬에 생기면 아래 패턴으로 실수 커밋을 막는다.
+*고객사*
+*실사자료*
+*마스킹전*
+*_unmasked*
+*_raw_client*
+
+# === OS / 에디터 ===
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

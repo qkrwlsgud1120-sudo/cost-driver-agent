@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>원가동인 추천 파이프라인 — 데모 대시보드</title>
+<style>
+  :root {
+    --surface-1:      #fcfcfb;
+    --page-plane:      #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --grid:           #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --series-1:       #2a78d6; /* 배부형 */
+    --series-2:       #1baf7a; /* 직접귀속형 */
+    --status-warning: #fab219; /* 추가판단 필요(검토대기) */
+    --status-warning-ink: #7a4e00;
+    --status-good:    #0ca30c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --surface-1:      #1a1a19;
+      --page-plane:      #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --grid:           #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --series-1:       #3987e5;
+      --series-2:       #199e70;
+      --status-warning: #fab219;
+      --status-warning-ink: #ffd685;
+      --status-good:    #0ca30c;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--page-plane);
+    color: var(--text-primary);
+    padding: 32px 24px 64px;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; }
+  header.page-header { margin-bottom: 28px; }
+  header.page-header h1 { font-size: 22px; font-weight: 600; margin: 0 0 6px; }
+  header.page-header p { font-size: 13px; color: var(--text-secondary); margin: 2px 0; line-height: 1.6; }
+  .badge {
+    display: inline-block; font-size: 11px; font-weight: 600; color: var(--status-warning-ink);
+    background: color-mix(in srgb, var(--status-warning) 22%, transparent);
+    border-radius: 4px; padding: 2px 8px; margin-right: 6px;
+  }
+  .card {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 22px;
+    margin-bottom: 20px;
+  }
+  .card h2 { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
+  .card .subtitle { font-size: 12.5px; color: var(--text-secondary); margin: 0 0 16px; }
+
+  /* KPI row */
+  .kpi-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 20px; }
+  .kpi-tile {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 16px 14px;
+  }
+  .kpi-tile .label { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+  .kpi-tile .value { font-size: 26px; font-weight: 600; line-height: 1.1; }
+  .kpi-tile .value.warn { color: var(--status-warning-ink); }
+  .kpi-tile .sub { font-size: 11.5px; color: var(--text-muted); margin-top: 4px; }
+
+  /* legend */
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 14px; font-size: 12.5px; color: var(--text-secondary); }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+
+  /* stacked bar rows */
+  .bar-rows { display: flex; flex-direction: column; gap: 16px; }
+  .bar-row { display: grid; grid-template-columns: 100px 1fr; gap: 12px; align-items: center; }
+  .bar-row .row-label { font-size: 13px; color: var(--text-primary); font-weight: 500; text-align: right; }
+  .bar-track {
+    position: relative; height: 24px; border-radius: 4px; overflow: hidden;
+    background: var(--grid); display: flex;
+  }
+  .bar-seg {
+    height: 24px; position: relative; cursor: default;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11.5px; font-weight: 600; color: #ffffff;
+    outline: 2px solid var(--surface-1); outline-offset: -1px;
+  }
+  .bar-seg[data-kind="배부형"] { background: var(--series-1); }
+  .bar-seg[data-kind="직접귀속형"] { background: var(--series-2); }
+  .bar-seg[data-kind="추가판단 필요"] { background: var(--status-warning); color: var(--status-warning-ink); }
+  .bar-seg .seg-label { pointer-events: none; white-space: nowrap; }
+  .bar-seg:hover { filter: brightness(1.08); }
+  .bar-seg:focus-visible { outline: 2px solid var(--text-primary); }
+
+  /* ranked single bar chart */
+  .ranked-rows { display: flex; flex-direction: column; gap: 14px; }
+  .ranked-row { display: grid; grid-template-columns: 110px 1fr 46px; gap: 10px; align-items: center; }
+  .ranked-row .row-label { font-size: 13px; text-align: right; color: var(--text-primary); }
+  .ranked-track { height: 20px; background: var(--grid); border-radius: 4px; position: relative; }
+  .ranked-fill { height: 20px; border-radius: 4px; }
+  .ranked-row .row-value { font-size: 13px; font-weight: 600; color: var(--text-primary); text-align: left; }
+
+  /* tooltip */
+  #tooltip {
+    position: fixed; pointer-events: none; z-index: 50;
+    background: var(--text-primary); color: var(--surface-1);
+    font-size: 12px; line-height: 1.5; padding: 8px 10px; border-radius: 6px;
+    max-width: 320px; opacity: 0; transform: translateY(4px);
+    transition: opacity .1s ease, transform .1s ease;
+  }
+  #tooltip.show { opacity: 1; transform: translateY(0); }
+  #tooltip .tt-value { font-weight: 700; }
+  #tooltip .tt-series { color: var(--text-muted); }
+
+  /* callout */
+  .callout {
+    margin-top: 14px; padding: 10px 12px; border-radius: 8px;
+    background: color-mix(in srgb, var(--status-warning) 16%, transparent);
+    border: 1px solid color-mix(in srgb, var(--status-warning) 40%, transparent);
+    font-size: 12.5px; color: var(--text-primary); line-height: 1.6;
+  }
+
+  /* tables */
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  thead th {
+    text-align: left; font-weight: 600; color: var(--text-secondary);
+    border-bottom: 1px solid var(--baseline); padding: 8px 10px; white-space: nowrap;
+  }
+  tbody td { padding: 9px 10px; border-bottom: 1px solid var(--grid); vertical-align: top; color: var(--text-primary); }
+  tbody tr:last-child td { border-bottom: none; }
+  td.num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+  td.reason { color: var(--text-secondary); max-width: 420px; }
+  .pill { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px; }
+  .pill-alloc { background: color-mix(in srgb, var(--series-1) 18%, transparent); color: var(--series-1); }
+  .pill-direct { background: color-mix(in srgb, var(--series-2) 18%, transparent); color: color-mix(in srgb, var(--series-2) 70%, black); }
+  .pill-pending { background: color-mix(in srgb, var(--status-warning) 25%, transparent); color: var(--status-warning-ink); }
+  .pill-consistent { background: color-mix(in srgb, var(--status-good) 18%, transparent); color: var(--status-good); }
+
+  /* filter row */
+  .filter-row { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .filter-btn {
+    font-size: 12.5px; font-weight: 500; padding: 6px 14px; border-radius: 20px;
+    border: 1px solid var(--border); background: var(--surface-1); color: var(--text-secondary);
+    cursor: pointer;
+  }
+  .filter-btn.active { background: var(--text-primary); color: var(--surface-1); border-color: var(--text-primary); }
+  .filter-btn:hover:not(.active) { background: var(--grid); }
+
+  details.table-toggle { margin-top: 10px; }
+  details.table-toggle > summary {
+    cursor: pointer; font-size: 12.5px; color: var(--text-secondary); user-select: none;
+  }
+  .table-scroll { overflow-x: auto; margin-top: 10px; }
+
+  footer { font-size: 11.5px; color: var(--text-muted); margin-top: 28px; line-height: 1.8; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="page-header">
+    <h1>원가동인 추천 파이프라인 — 데모 대시보드</h1>
+    <p><span class="badge">샘플·가상 데이터</span>보상팀 · 계약관리팀 · 재보험팀 · 언더라이팅팀 4개 부서, 계정 15종(공통 7 · 특정 8)에 대한 첫 파이프라인 실행 결과입니다.</p>
+    <p>실제 고객사 데이터가 아니며, 8월 데모 준비를 위한 파이프라인 동작 검증용입니다. 참조 문서 중 인건비 관련 항목은 실제 실사 자료를 반영했고, 보험업 특유 항목(재보험·언더라이팅)은 데모용 샘플 도메인 지식입니다.</p>
+  </header>
+
+  <div class="kpi-row" id="kpi-row"></div>
+
+  <section class="card">
+    <h2>부서별 계정 처리 현황</h2>
+    <p class="subtitle">부서마다 몇 개 계정이 배부형 / 직접귀속형으로 확정됐고, 몇 개가 회계사 판정 대기(추가판단 필요)로 남았는지</p>
+    <div class="legend">
+      <div class="legend-item"><span class="legend-swatch" style="background:var(--series-1)"></span>배부형</div>
+      <div class="legend-item"><span class="legend-swatch" style="background:var(--series-2)"></span>직접귀속형</div>
+      <div class="legend-item"><span class="legend-swatch" style="background:var(--status-warning)"></span>추가판단 필요(회계사 판정 대기)</div>
+    </div>
+    <div class="bar-rows" id="dept-bars"></div>
+    <details class="table-toggle">
+      <summary>표로 보기</summary>
+      <div class="table-scroll"><table id="dept-bars-table"></table></div>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2>4-type 분포 (전체 15개 고유 계정)</h2>
+    <p class="subtitle">부서 간 중복을 제거한 고유 계정 기준 분류 결과</p>
+    <div class="ranked-rows" id="type-ranked"></div>
+  </section>
+
+  <section class="card">
+    <h2>금액 기준 — 확정 vs 회계사 판정 대기</h2>
+    <p class="subtitle">부서별 총 검토 대상 금액을 배부형 / 직접귀속형 / 추가판단 필요 금액으로 나눈 것 (단위: 백만원)</p>
+    <div class="legend">
+      <div class="legend-item"><span class="legend-swatch" style="background:var(--series-1)"></span>배부형</div>
+      <div class="legend-item"><span class="legend-swatch" style="background:var(--series-2)"></span>직접귀속형</div>
+      <div class="legend-item"><span class="legend-swatch" style="background:var(--status-warning)"></span>추가판단 필요(회계사 판정 대기)</div>
+    </div>
+    <div class="bar-rows" id="amount-bars"></div>
+    <div class="callout">⚠ 추가판단 필요 금액의 대부분(약 95%)은 보상팀의 단일 계정 <strong>보상금(12.5억원)</strong>에서 발생합니다. 이는 파이프라인이 처리에 실패한 것이 아니라, 참조 문서(인건비 기반 taxonomy)가 보험금 같은 급부성 비용의 처리 기준을 아직 담고 있지 않다는 점을 스스로 인지하고 임의 판정을 피한 결과입니다 — 금액이 큰 계정일수록 신중하게 회계사 확인으로 넘긴 사례로 볼 수 있습니다.</div>
+    <details class="table-toggle">
+      <summary>표로 보기</summary>
+      <div class="table-scroll"><table id="amount-bars-table"></table></div>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2>추가판단 필요 계정 상세 — 회계사 판정 대기</h2>
+    <p class="subtitle">4-type을 강제 배정하지 않고 성격 설명만 남긴 계정입니다. 4개 배치 전체에서 3종만 남았습니다.</p>
+    <div class="table-scroll"><table id="ambiguous-table"></table></div>
+  </section>
+
+  <section class="card">
+    <h2>공통 계정 원가동인 일관성 확인</h2>
+    <p class="subtitle">같은 계정이 여러 부서에 등장할 때, Phase 0 사전 스캔 덕분에 1순위 원가동인이 부서마다 다르게 나오지 않고 재사용되고 있는지 확인합니다.</p>
+    <div class="table-scroll"><table id="consistency-table"></table></div>
+  </section>
+
+  <section class="card">
+    <h2>전체 계정 상세 (부서별 32건)</h2>
+    <div class="filter-row" id="dept-filter"></div>
+    <div class="table-scroll"><table id="detail-table"></table></div>
+  </section>
+
+  <footer>
+    데이터 출처: input/departments/*.csv(샘플), .claude/skills/cost-driver-framework/references/*.md(참조 문서) · 생성 시각(Phase 0): <span id="generated-at"></span><br>
+    금액 단위는 원(KRW)이며 표시 목적상 백만원 단위로 축약한 항목이 있습니다.
+  </footer>
+
+</div>
+
+<div id="tooltip"></div>
+
+<script id="dashboard-data" type="application/json">
+{"generated_at": "2026-07-02T16:18:22.813339+09:00", "departments": ["보상팀", "계약관리팀", "재보험팀", "언더라이팅팀"], "records": [{"code": "51101", "name": "수선비", "dept": "보상팀", "four_type": null, "ambiguous": true, "amount": 8500000, "driver_1st": null, "driver_2nd": null, "driver_3rd": null, "reason_short": "정의: 유·무형 자산 및 사무·설비의 수선·유지에 지출하는 비용. / 추정 근거: 사용 부서에 배부한다면 cost_classification_standard.md 배부형 정의('조직장 통제 불가하나 인원수 등 측정 가능한 객관적 지표에 비례')에 따라 점유 면적·인원수"}, {"code": "51205", "name": "임차료", "dept": "보상팀", "four_type": "배부형", "ambiguous": false, "amount": 42000000, "driver_1st": "부서별 점유면적(㎡)", "driver_2nd": "부서 인원수(헤드카운트)", "driver_3rd": "균등 배분(부서당 동일액)", "reason_short": "cost_classification_standard.md 배부형 정의에 따르면 '개별 조직이 발생을 직접 통제하지는 않지만 인원수 등 조직별로 측정 가능한 객관적 지표에 비례해 배분하는 비용'에 해당한다. 임차료는 임대차 계약을 전사가 체결해 조직장이 통제할 수 없으나"}, {"code": "51310", "name": "소모품비", "dept": "보상팀", "four_type": "배부형", "ambiguous": false, "amount": 3200000, "driver_1st": "부서 인원수(헤드카운트)", "driver_2nd": "실집행 소모품 사용액/청구 실적", "driver_3rd": "균등 배분(부서당 동일액)", "reason_short": "cost_classification_standard.md 배부형 정의('인원수 등 측정 가능한 객관적 지표에 비례')에 근거해, 소모품비는 조직장이 전체 규모를 통제한다기보다 부서 인원수에 대체로 비례해 소비되는 일반 사무성 비용이므로 인원수 기준 배부형으로 본다. 사"}, {"code": "51420", "name": "통신비", "dept": "보상팀", "four_type": "배부형", "ambiguous": false, "amount": 5100000, "driver_1st": "부서 인원수(헤드카운트)", "driver_2nd": "부서별 회선 수/실사용 요금 실적", "driver_3rd": "균등 배분(부서당 동일액)", "reason_short": "cost_classification_standard.md 배부형 정의('조직별 측정 가능한 객관적 지표에 비례')에 따라, 통신비는 회선·요금제를 전사가 통제하는 경우가 많아 조직장 통제가 약하고 부서 인원수에 대체로 비례하므로 인원수 기준 배부형으로 판단한다. 회선별"}, {"code": "51550", "name": "여비교통비", "dept": "보상팀", "four_type": "직접귀속형", "ambiguous": false, "amount": 6700000, "driver_1st": "출장 정산 실집행 금액(부서별 실적)", "driver_2nd": "출장(사고 현장조사 포함) 건수", "driver_3rd": "부서 인원수(헤드카운트)", "reason_short": "cost_classification_standard.md 직접귀속형 정의('조직장이 발생 여부·규모를 통제 가능하고 조직별 실집행 데이터가 확보됨')와 예시(직원시간외수당 5117200900 '조직장 승인·운영방식에 따라 발생', 장부인쇄비 '업무 집행 형태에 따라 조"}, {"code": "51600", "name": "전산운영비", "dept": "보상팀", "four_type": null, "ambiguous": true, "amount": 15400000, "driver_1st": null, "driver_2nd": null, "driver_3rd": null, "reason_short": "정의: 전산 시스템·인프라의 운영·유지에 지출하는 비용. / 추정 근거: 부서별 시스템 사용량·계정 수에 비례한다면 cost_classification_standard.md 배부형(측정 가능한 객관적 지표 비례)으로, 전사 공용 IT 인프라(공통 서버·전사 시스템) 운"}, {"code": "51710", "name": "교육훈련비", "dept": "보상팀", "four_type": "배부형", "ambiguous": false, "amount": 4300000, "driver_1st": "교육 참여(대상) 인원수(헤드카운트)", "driver_2nd": "실집행 교육비(부서별 교육비 청구 실적)", "driver_3rd": "균등 배분(부서당 동일액)", "reason_short": "insurance_accounting_guide.md §3에서 '교육훈련비'는 표면적으로 교육 참여 인원에 비례하는 배부형으로 보인다고 기술한다. 본 레코드는 특이 비고나 대체계정 안내가 없는 일반 교육훈련비이므로, cost_classification_standard."}, {"code": "61100", "name": "보상금", "dept": "보상팀", "four_type": null, "ambiguous": true, "amount": 1250000000, "driver_1st": null, "driver_2nd": null, "driver_3rd": null, "reason_short": "정의: 보험사고 발생 시 계약자에게 지급하는 보험금(손해액)으로, 보상팀 업무활동의 핵심 산출물이자 최대 금액(12.5억) 계정. / 추정 근거: 사고 건수·보상금 규모에 따라 보상팀에 직접 추적 가능하다는 점에서 직접귀속형으로 볼 수 있으나, 발생 "}, {"code": "61150", "name": "손해사정수수료", "dept": "보상팀", "four_type": "직접귀속형", "ambiguous": false, "amount": 89000000, "driver_1st": "손해사정 건수(사고 건수)", "driver_2nd": "보상금(손해액) 지급 규모", "driver_3rd": "손해사정 실집행 수수료 금액", "reason_short": "insurance_accounting_guide.md §1 '손해사정비용'에 따르면 보험금 지급 심사·조사를 위한 비용으로 사고 건수·보상금 규모에 비례해 발생하며, 보상팀(등장부서=보상팀 단일)의 핵심 업무활동에 직접 연계된다. 부서 전용 계정으로 "}, {"code": "51101", "name": "수선비", "dept": "계약관리팀", "four_type": null, "ambiguous": true, "amount": 6200000, "driver_1st": null, "driver_2nd": null, "driver_3rd": null, "reason_short": "정의: 유·무형 자산 및 사무·설비의 수선·유지에 지출하는 비용(계약관리팀 6,200,000원). / 계약관리팀 맥락 재판단: 계약관리팀 전용 사무기기·설비 수선이라면 cost_classification_standard.md 직접귀속형('조직장이 발생 여부·규모를 통제"}, {"code": "51205", "name": "임차료", "dept": "계약관리팀", "four_type": "배부형", "ambiguous": false, "amount": 38000000, "driver_1st": "부서별 점유면적(㎡)", "driver_2nd": "부서 인원수(헤드카운트)", "driver_3rd": "균등 배분(부서당 동일액)", "reason_short": "공통 계정으로 보상팀에서 배부형으로 확정된 값을 계약관리팀 맥락에서 재확인한 결과 타당하다. cost_classification_standard.md 배부형 정의('개별 조직이 발생을 직접 통제하지는 않지만 인원수 등 조직별로 측정 가능한 객관적 지표에 비례해 배분')"}, {"code": "51310", "name": "소모품비", "dept": "계약관리팀", "four_type": "배부형", "ambiguous": false, "amount": 2100000, "driver_1st": "부서 인원수(헤드카운트)", "driver_2nd": "실집행 소모품 사용액/청구 실적", "driver_3rd": "균등 배분(부서당 동일액)", "reason_short": "공통 계정으로 보상팀에서 배부형으로 확정된 값을 계약관리팀 맥락에서 재확인한 결과 타당하다. cost_classification_standard.md 배부형 정의('인원수 등 측정 가능한 객관적 지표에 비례')에 근거해, 소모품비는 조직장이 전체 규모를 통제한다기보다 "}, {"code": "51420", "name": "통신비", "dept": "계약관리팀", "four_type": "배부형", "ambiguous": false, "amount": 4300000, "driver_1st": "부서 인원수(헤드카운트)", "driver_2nd": "부서별 회선 수/실사용 요금 실적", "driver_3rd": "균등 배분(부서당 동일액)", "reason_short": "공통 계정으로 보상팀에서 배부형으로 확정된 값을 계약관리팀 맥락에서 재확인한 결과 타당하다. cost_classification_standard.md 배부형 정의('조직별 측정 가능한 객관적 지표에 비례')에 따라, 통신비는 회선·요금제를 전사가 통제하는 경우가 많아 "}, {"code": "51550", "name": "여비교통비", "dept": "계약관리팀", "four_type": "직접귀속형", "ambiguous": false, "amount": 5200000, "driver_1st": "출장 정산 실집행 금액(부서별 실적)", "driver_2nd": "출장 건수", "driver_3rd": "부서 인원수(헤드카운트)", "reason_short": "공통 계정으로 보상팀에서 직접귀속형으로 확정된 값을 계약관리팀 맥락에서 재확인한 결과 타당하다. cost_classification_standard.md 직접귀속형 정의('조직장이 발생 여부·규모를 통제 가능하고 조직별 실집행 데이터가 확보됨')와 예시(직원시간외수당 "}, {"code": "51600", "name": "전산운영비", "dept": "계약관리팀", "four_type": null, "ambiguous": true, "amount": 12800000, "driver_1st": null, "driver_2nd": null, "driver_3rd": null, "reason_short": "정의: 전산 시스템·인프라의 운영·유지에 지출하는 비용(계약관리팀 12,800,000원). / 계약관리팀 맥락 재판단: 계약관리 전용 시스템(계약관리 시스템 등)의 개별 사용료라면 부서 귀속이 가능해 직접귀속형 또는 사용량 비례 배부형으로 볼 수 있으"}, {"code": "62100", "name": "계약체결비용", "dept": "계약관리팀", "four_type": "직접귀속형", "ambiguous": false, "amount": 210000000, "driver_1st": "신계약 체결 건수(신계약 실적)", "driver_2nd": "신계약 보험료(체결 계약 규모)", "driver_3rd": "계약체결 실집행 비용 금액(설계사 수수료·심사비 실집행액)", "reason_short": "insurance_accounting_guide.md §1 '계약체결비용(신계약비)' 정의에 따르면 신규 계약 획득을 위해 발생하는 비용(설계사 수수료·언더라이팅 심사비용 등)으로 신계약 건수에 비례해 발생하며 초년도에 집중된다. 계약관리팀 단독 등장"}, {"code": "62150", "name": "계약유지비용", "dept": "계약관리팀", "four_type": "직접귀속형", "ambiguous": false, "amount": 54000000, "driver_1st": "유효계약(보유계약) 건수", "driver_2nd": "보유계약자 수", "driver_3rd": "계약유지 실집행 비용 금액", "reason_short": "insurance_accounting_guide.md §1 '계약유지비용(유지비)' 정의에 따르면 계약 유지관리를 위해 발생하는 비용(계약자 서비스·갱신 관리 등)으로 유효계약 건수·보유계약자 수에 비례해 매 회계기간 균등하게 발생한다. 계약관리팀 단"}, {"code": "51101", "name": "수선비", "dept": "재보험팀", "four_type": null, "ambiguous": true, "amount": 3100000, "driver_1st": null, "driver_2nd": null, "driver_3rd": null, "reason_short": "정의: 유·무형 자산 및 사무·설비의 수선·유지에 지출하는 비용(재보험팀 3,100,000원). / 재보험팀 맥락 재판단(처음부터): 재보험팀은 출재/수재 정산 사무 중심 부서로 대형 전용 설비가 적어 수선비 규모도 소액이다. 재보험팀 전용 사무기기 "}, {"code": "51205", "name": "임차료", "dept": "재보험팀", "four_type": "배부형", "ambiguous": false, "amount": 19500000, "driver_1st": "부서별 점유면적(㎡)", "driver_2nd": "부서 인원수(헤드카운트)", "driver_3rd": "균등 배분(부서당 동일액)", "reason_short": "공통 계정으로 앞선 배치에서 배부형으로 확정된 값을 재보험팀 맥락에서 재확인한 결과 타당하다. cost_classification_standard.md 배부형 정의('개별 조직이 발생을 직접 통제하지는 않지만 인원수 등 조직별로 측정 가능한 객관적 지표에 비례해 배분'"}, {"code": "51420", "name": "통신비", "dept": "재보험팀", "four_type": "배부형", "ambiguous": false, "amount": 2800000, "driver_1st": "부서 인원수(헤드카운트)", "driver_2nd": "부서별 회선 수/실사용 요금 실적", "driver_3rd": "균등 배분(부서당 동일액)", "reason_short": "공통 계정으로 앞선 배치에서 배부형으로 확정된 값을 재보험팀 맥락에서 재확인한 결과 타당하다. cost_classification_standard.md 배부형 정의('조직별 측정 가능한 객관적 지표에 비례')에 따라, 통신비는 회선·요금제를 전사가 통제하는 경우가 많아"}, {"code": "51600", "name": "전산운영비", "dept": "재보험팀", "four_type": null, "ambiguous": true, "amount": 9200000, "driver_1st": null, "driver_2nd": null, "driver_3rd": null, "reason_short": "정의: 전산 시스템·인프라의 운영·유지에 지출하는 비용(재보험팀 9,200,000원). / 재보험팀 맥락 재판단(처음부터): 재보험팀은 출재/수재 정산을 위해 재보험 정산 전용 시스템에 의존할 수 있는데, 그 전용 시스템 사용료라면 부서 귀속이 가능해"}, {"code": "51710", "name": "교육훈련비", "dept": "재보험팀", "four_type": "배부형", "ambiguous": false, "amount": 2600000, "driver_1st": "교육 참여(대상) 인원수(헤드카운트)", "driver_2nd": "실집행 교육비(부서별 교육비 청구 실적)", "driver_3rd": "균등 배분(부서당 동일액)", "reason_short": "공통 계정으로 앞선 배치에서 배부형으로 확정된 값을 재보험팀 맥락에서 재확인한 결과 타당하다. insurance_accounting_guide.md §3에서 '교육훈련비'는 표면적으로 교육 참여 인원에 비례하는 배부형으로 보인다고 기술하며, 본 레코드"}, {"code": "63100", "name": "재보험수수료", "dept": "재보험팀", "four_type": "직접귀속형", "ambiguous": false, "amount": 178000000, "driver_1st": "실집행 재보험수수료 금액(출재/수재 수수료 실적)", "driver_2nd": "재보험 계약 건수", "driver_3rd": "출재보험료 규모", "reason_short": "insurance_accounting_guide.md §1 '재보험수수료(수재/출재수수료)' 정의에 따르면 재보험 계약 체결에 따라 수취·지급하는 수수료로 계약 건수 및 출재보험료 규모에 비례해 발생한다. 재보험팀 단독 등장의 부서 특정 계정(178,"}, {"code": "63150", "name": "재보험정산비용", "dept": "재보험팀", "four_type": "직접귀속형", "ambiguous": false, "amount": 41000000, "driver_1st": "실집행 재보험정산비용 금액(출재/수재 정산 처리 실적)", "driver_2nd": "재보험 정산 건수", "driver_3rd": "출재보험료(출재/수재) 규모", "reason_short": "insurance_accounting_guide.md §1은 '재보험료(출재보험료)'와 '재보험수수료'를 재보험 계약 건수·출재보험료 규모에 비례해 발생하는 재보험 흐름 비용으로 정의하고, §2는 재보험 관련 비용을 원수보험료와 분리된 '위험 이전 계"}, {"code": "51101", "name": "수선비", "dept": "언더라이팅팀", "four_type": null, "ambiguous": true, "amount": 4400000, "driver_1st": null, "driver_2nd": null, "driver_3rd": null, "reason_short": "정의: 유·무형 자산 및 사무·설비의 수선·유지에 지출하는 비용(언더라이팅팀 4,400,000원). / 언더라이팅팀 맥락 재판단(처음부터): 언더라이팅팀은 요율산정·위험심사용 단말·전산 설비 의존도가 높은 부서로, 팀 전용 심사 단말·사무기기 수선이면"}, {"code": "51205", "name": "임차료", "dept": "언더라이팅팀", "four_type": "배부형", "ambiguous": false, "amount": 26000000, "driver_1st": "부서별 점유면적(㎡)", "driver_2nd": "부서 인원수(헤드카운트)", "driver_3rd": "균등 배분(부서당 동일액)", "reason_short": "공통 계정으로 앞선 배치에서 배부형으로 확정된 값을 언더라이팅팀 맥락에서 재확인한 결과 타당하다. cost_classification_standard.md 배부형 정의('개별 조직이 발생을 직접 통제하지는 않지만 인원수 등 조직별로 측정 가능한 객관적 지표에 비례해 배"}, {"code": "51310", "name": "소모품비", "dept": "언더라이팅팀", "four_type": "배부형", "ambiguous": false, "amount": 1800000, "driver_1st": "부서 인원수(헤드카운트)", "driver_2nd": "실집행 소모품 사용액/청구 실적", "driver_3rd": "균등 배분(부서당 동일액)", "reason_short": "공통 계정으로 앞선 배치에서 배부형으로 확정된 값을 언더라이팅팀 맥락에서 재확인한 결과 타당하다. cost_classification_standard.md 배부형 정의('인원수 등 측정 가능한 객관적 지표에 비례')에 근거해, 소모품비는 조직장이 전체 규모를 통제한다기"}, {"code": "51550", "name": "여비교통비", "dept": "언더라이팅팀", "four_type": "직접귀속형", "ambiguous": false, "amount": 3900000, "driver_1st": "출장 정산 실집행 금액(부서별 실적)", "driver_2nd": "출장 건수", "driver_3rd": "부서 인원수(헤드카운트)", "reason_short": "공통 계정으로 앞선 배치에서 직접귀속형으로 확정된 값을 언더라이팅팀 맥락에서 재확인한 결과 타당하다. cost_classification_standard.md 직접귀속형 정의('조직장이 발생 여부·규모를 통제 가능하고 조직별 실집행 데이터가 확보됨')와 예시(직원시간외"}, {"code": "51600", "name": "전산운영비", "dept": "언더라이팅팀", "four_type": null, "ambiguous": true, "amount": 11300000, "driver_1st": null, "driver_2nd": null, "driver_3rd": null, "reason_short": "정의: 전산 시스템·인프라의 운영·유지에 지출하는 비용(언더라이팅팀 11,300,000원). / 언더라이팅팀 맥락 재판단(처음부터): 언더라이팅팀은 요율산정·심사 시스템 의존도가 높으나, 요율산정 전용 시스템 비용은 별도 계정(64150 요율산정시스템"}, {"code": "51710", "name": "교육훈련비", "dept": "언더라이팅팀", "four_type": "배부형", "ambiguous": false, "amount": 3100000, "driver_1st": "교육 참여(대상) 인원수(헤드카운트)", "driver_2nd": "실집행 교육비(부서별 교육비 청구 실적)", "driver_3rd": "균등 배분(부서당 동일액)", "reason_short": "공통 계정으로 앞선 배치에서 배부형으로 확정된 값을 언더라이팅팀 맥락에서 재확인한 결과 타당하다. insurance_accounting_guide.md §3에서 '교육훈련비'는 표면적으로 교육 참여 인원에 비례하는 배부형으로 보인다고 기술하며, 본 레"}, {"code": "64100", "name": "언더라이팅수수료", "dept": "언더라이팅팀", "four_type": "직접귀속형", "ambiguous": false, "amount": 96000000, "driver_1st": "위험 인수 심사 건수", "driver_2nd": "신계약 건수", "driver_3rd": "실집행 언더라이팅수수료 금액(부서 실적)", "reason_short": "insurance_accounting_guide.md §1 '언더라이팅수수료'에 따르면 위험 인수 심사 관련 비용으로 심사 건수·신계약 건수에 비례해 발생한다. 언더라이팅팀 단독 등장의 부서 특정 계정(96,000,000원, 배치 최대 금액)으로 위험"}, {"code": "64150", "name": "요율산정시스템사용료", "dept": "언더라이팅팀", "four_type": "직접귀속형", "ambiguous": false, "amount": 34000000, "driver_1st": "요율산정·심사 시스템 사용(요율산정) 건수", "driver_2nd": "실집행 시스템 사용료 금액(부서 실적)", "driver_3rd": "시스템 이용자 수(언더라이팅팀 인원수)", "reason_short": "요율산정시스템사용료는 insurance_accounting_guide.md에 직접 정의된 항목이 없어, §1의 인접 개념인 '언더라이팅수수료'(위험 인수 심사 관련 비용, 심사·신계약 건수 비례)와 전산운영비(전산 시스템 운영 비용) 성격을 준용해 판"}], "unique_accounts": [{"code": "51101", "name": "수선비", "kind": "공통", "depts": ["계약관리팀", "보상팀", "언더라이팅팀", "재보험팀"], "four_type": null, "ambiguous": true, "reason_short": "정의: 유·무형 자산 및 사무·설비의 수선·유지에 지출하는 비용(언더라이팅팀 4,400,000원). / 언더라이팅팀 맥락 재판단(처음부터): 언더라이팅팀은 요율산정·위험심사용 단말·전산 설비 의존도가 높은 부서로, 팀 전용 심사 단말·사무기기 수선이면 cost_classification_standard.md 직접귀속형('조직장이 발생 여부·규모를 통제 가능, 조직별 실집행 "}, {"code": "51205", "name": "임차료", "kind": "공통", "depts": ["계약관리팀", "보상팀", "언더라이팅팀", "재보험팀"], "four_type": "배부형", "ambiguous": false, "reason_short": "공통 계정으로 앞선 배치에서 배부형으로 확정된 값을 언더라이팅팀 맥락에서 재확인한 결과 타당하다. cost_classification_standard.md 배부형 정의('개별 조직이 발생을 직접 통제하지는 않지만 인원수 등 조직별로 측정 가능한 객관적 지표에 비례해 배분')에 부합한다. 사무공간 임대차 계약은 전사가 체결·관리하므로 언더라이팅팀장이 발생 규모를 통제할 수 없"}, {"code": "51310", "name": "소모품비", "kind": "공통", "depts": ["계약관리팀", "보상팀", "언더라이팅팀"], "four_type": "배부형", "ambiguous": false, "reason_short": "공통 계정으로 앞선 배치에서 배부형으로 확정된 값을 언더라이팅팀 맥락에서 재확인한 결과 타당하다. cost_classification_standard.md 배부형 정의('인원수 등 측정 가능한 객관적 지표에 비례')에 근거해, 소모품비는 조직장이 전체 규모를 통제한다기보다 언더라이팅팀 인원수에 대체로 비례해 소비되는 일반 사무성 비용이므로 인원수 기준 배부형으로 본다(언더라"}, {"code": "51420", "name": "통신비", "kind": "공통", "depts": ["계약관리팀", "보상팀", "재보험팀"], "four_type": "배부형", "ambiguous": false, "reason_short": "공통 계정으로 앞선 배치에서 배부형으로 확정된 값을 재보험팀 맥락에서 재확인한 결과 타당하다. cost_classification_standard.md 배부형 정의('조직별 측정 가능한 객관적 지표에 비례')에 따라, 통신비는 회선·요금제를 전사가 통제하는 경우가 많아 재보험팀장의 통제가 약하고 부서 인원수에 대체로 비례하므로 인원수 기준 배부형으로 판단한다(재보험팀 2,8"}, {"code": "51550", "name": "여비교통비", "kind": "공통", "depts": ["계약관리팀", "보상팀", "언더라이팅팀"], "four_type": "직접귀속형", "ambiguous": false, "reason_short": "공통 계정으로 앞선 배치에서 직접귀속형으로 확정된 값을 언더라이팅팀 맥락에서 재확인한 결과 타당하다. cost_classification_standard.md 직접귀속형 정의('조직장이 발생 여부·규모를 통제 가능하고 조직별 실집행 데이터가 확보됨')와 예시(직원시간외수당 5117200900 '조직장 승인·운영방식에 따라 발생')에 부합한다. 언더라이팅팀의 여비교통비는 출장"}, {"code": "51600", "name": "전산운영비", "kind": "공통", "depts": ["계약관리팀", "보상팀", "언더라이팅팀", "재보험팀"], "four_type": null, "ambiguous": true, "reason_short": "정의: 전산 시스템·인프라의 운영·유지에 지출하는 비용(언더라이팅팀 11,300,000원). / 언더라이팅팀 맥락 재판단(처음부터): 언더라이팅팀은 요율산정·심사 시스템 의존도가 높으나, 요율산정 전용 시스템 비용은 별도 계정(64150 요율산정시스템사용료)으로 분리 집행되고 있어 본 51600 전산운영비는 전사 공용 IT 인프라(공통 서버·전사 기간시스템"}, {"code": "62100", "name": "계약체결비용", "kind": "특정", "depts": ["계약관리팀"], "four_type": "직접귀속형", "ambiguous": false, "reason_short": "insurance_accounting_guide.md §1 '계약체결비용(신계약비)' 정의에 따르면 신규 계약 획득을 위해 발생하는 비용(설계사 수수료·언더라이팅 심사비용 등)으로 신계약 건수에 비례해 발생하며 초년도에 집중된다. 계약관리팀 단독 등장의 부서 특정 계정(210,000,000원, 배치 최대 금액)으로 타 조직에 분산 배부할 필요가 없고, 신계"}, {"code": "62150", "name": "계약유지비용", "kind": "특정", "depts": ["계약관리팀"], "four_type": "직접귀속형", "ambiguous": false, "reason_short": "insurance_accounting_guide.md §1 '계약유지비용(유지비)' 정의에 따르면 계약 유지관리를 위해 발생하는 비용(계약자 서비스·갱신 관리 등)으로 유효계약 건수·보유계약자 수에 비례해 매 회계기간 균등하게 발생한다. 계약관리팀 단독 등장의 부서 특정 계정(54,000,000원)으로 계약 유지관리가 계약관리팀의 핵심 업무활동이며 타 조직"}, {"code": "51710", "name": "교육훈련비", "kind": "공통", "depts": ["보상팀", "언더라이팅팀", "재보험팀"], "four_type": "배부형", "ambiguous": false, "reason_short": "공통 계정으로 앞선 배치에서 배부형으로 확정된 값을 언더라이팅팀 맥락에서 재확인한 결과 타당하다. insurance_accounting_guide.md §3에서 '교육훈련비'는 표면적으로 교육 참여 인원에 비례하는 배부형으로 보인다고 기술하며, 본 레코드는 특이 비고나 대체계정 안내가 없는 일반 교육훈련비이므로 cost_classification_standard.md 배부형"}, {"code": "61100", "name": "보상금", "kind": "특정", "depts": ["보상팀"], "four_type": null, "ambiguous": true, "reason_short": "정의: 보험사고 발생 시 계약자에게 지급하는 보험금(손해액)으로, 보상팀 업무활동의 핵심 산출물이자 최대 금액(12.5억) 계정. / 추정 근거: 사고 건수·보상금 규모에 따라 보상팀에 직접 추적 가능하다는 점에서 직접귀속형으로 볼 수 있으나, 발생 규모가 사고(외생 사건)로 결정되어 조직장이 통제하지 못하므로 taxonomy 직접귀속형의 '조직장 통제 가"}, {"code": "61150", "name": "손해사정수수료", "kind": "특정", "depts": ["보상팀"], "four_type": "직접귀속형", "ambiguous": false, "reason_short": "insurance_accounting_guide.md §1 '손해사정비용'에 따르면 보험금 지급 심사·조사를 위한 비용으로 사고 건수·보상금 규모에 비례해 발생하며, 보상팀(등장부서=보상팀 단일)의 핵심 업무활동에 직접 연계된다. 부서 전용 계정으로 타 조직에 분산 배부할 필요가 없고 사고 건수·손해사정 실적 등 실집행 데이터로 추적 가능하므로 four_t"}, {"code": "64100", "name": "언더라이팅수수료", "kind": "특정", "depts": ["언더라이팅팀"], "four_type": "직접귀속형", "ambiguous": false, "reason_short": "insurance_accounting_guide.md §1 '언더라이팅수수료'에 따르면 위험 인수 심사 관련 비용으로 심사 건수·신계약 건수에 비례해 발생한다. 언더라이팅팀 단독 등장의 부서 특정 계정(96,000,000원, 배치 최대 금액)으로 위험 인수 심사가 언더라이팅팀의 핵심 업무활동이며 타 조직에 분산 배부할 필요가 없고, 심사 건수·신계약 건수 "}, {"code": "64150", "name": "요율산정시스템사용료", "kind": "특정", "depts": ["언더라이팅팀"], "four_type": "직접귀속형", "ambiguous": false, "reason_short": "요율산정시스템사용료는 insurance_accounting_guide.md에 직접 정의된 항목이 없어, §1의 인접 개념인 '언더라이팅수수료'(위험 인수 심사 관련 비용, 심사·신계약 건수 비례)와 전산운영비(전산 시스템 운영 비용) 성격을 준용해 판단한다. 요율산정 시스템은 언더라이팅팀의 위험 인수·요율 산정 심사 업무를 위한 전용 시스템으로 언더라이팅팀"}, {"code": "63100", "name": "재보험수수료", "kind": "특정", "depts": ["재보험팀"], "four_type": "직접귀속형", "ambiguous": false, "reason_short": "insurance_accounting_guide.md §1 '재보험수수료(수재/출재수수료)' 정의에 따르면 재보험 계약 체결에 따라 수취·지급하는 수수료로 계약 건수 및 출재보험료 규모에 비례해 발생한다. 재보험팀 단독 등장의 부서 특정 계정(178,000,000원, 배치 최대 금액)으로, 재보험 출재/수재가 재보험팀의 핵심 업무활동이며 재보험 계약 건수·"}, {"code": "63150", "name": "재보험정산비용", "kind": "특정", "depts": ["재보험팀"], "four_type": "직접귀속형", "ambiguous": false, "reason_short": "insurance_accounting_guide.md §1은 '재보험료(출재보험료)'와 '재보험수수료'를 재보험 계약 건수·출재보험료 규모에 비례해 발생하는 재보험 흐름 비용으로 정의하고, §2는 재보험 관련 비용을 원수보험료와 분리된 '위험 이전 계약' 단위로 관리한다고 명시한다. 재보험정산비용은 이 출재/수재 정산 처리에 수반되는 비용으로 재보험팀 단독"}], "batches": [{"batch_id": "20260702-보상팀", "부서명": "보상팀", "원본파일": "c:\\Users\\iampn\\OneDrive\\바탕 화면\\원가동인 시스템\\cost-driver-agent\\output\\batch_20260702-보상팀_merged.json", "처리유형": "신규", "시작시각": "2026-07-02T16:53:12.862892+09:00", "완료시각": "2026-07-02T16:53:12.862892+09:00", "총계정수": 9, "추가판단 필요계정수": 3, "상태": "완료"}, {"batch_id": "20260702-계약관리팀", "부서명": "계약관리팀", "원본파일": "c:\\Users\\iampn\\OneDrive\\바탕 화면\\원가동인 시스템\\cost-driver-agent\\output\\batch_20260702-계약관리팀_merged.json", "처리유형": "신규", "시작시각": "2026-07-02T17:02:18.552361+09:00", "완료시각": "2026-07-02T17:02:18.552361+09:00", "총계정수": 8, "추가판단 필요계정수": 2, "상태": "완료"}, {"batch_id": "20260702-재보험팀", "부서명": "재보험팀", "원본파일": "c:\\Users\\iampn\\OneDrive\\바탕 화면\\원가동인 시스템\\cost-driver-agent\\output\\batch_20260702-재보험팀_merged.json", "처리유형": "신규", "시작시각": "2026-07-02T17:16:10.492245+09:00", "완료시각": "2026-07-02T17:16:10.492245+09:00", "총계정수": 7, "추가판단 필요계정수": 2, "상태": "완료"}, {"batch_id": "20260702-언더라이팅팀", "부서명": "언더라이팅팀", "원본파일": "c:\\Users\\iampn\\OneDrive\\바탕 화면\\원가동인 시스템\\cost-driver-agent\\output\\batch_20260702-언더라이팅팀_merged.json", "처리유형": "신규", "시작시각": "2026-07-02T19:07:07.409261+09:00", "완료시각": "2026-07-02T19:07:07.409261+09:00", "총계정수": 8, "추가판단 필요계정수": 2, "상태": "완료"}]}
+</script>
+<script>
+(function () {
+  const data = JSON.parse(document.getElementById('dashboard-data').textContent);
+  const records = data.records;
+  const uniqueAccounts = data.unique_accounts;
+  const depts = data.departments;
+
+  const KIND_CLASS = { "배부형": "pill-alloc", "직접귀속형": "pill-direct" };
+  function kindOf(rec) {
+    if (rec.ambiguous || !rec.four_type) return "추가판단 필요";
+    return rec.four_type;
+  }
+  function fmtWon(n) {
+    return "₩" + Math.round(n).toLocaleString("ko-KR");
+  }
+  function fmtEok(n) {
+    return (n / 100000000).toFixed(2) + "억";
+  }
+
+  // ---------- tooltip ----------
+  const tooltip = document.getElementById('tooltip');
+  function showTooltip(x, y, html) {
+    tooltip.innerHTML = "";
+    html.forEach(line => {
+      const row = document.createElement('div');
+      const strong = document.createElement('span');
+      strong.className = 'tt-value';
+      strong.textContent = line.value;
+      const series = document.createElement('span');
+      series.className = 'tt-series';
+      series.textContent = ' ' + line.label;
+      row.appendChild(strong);
+      row.appendChild(series);
+      tooltip.appendChild(row);
+    });
+    tooltip.style.left = (x + 14) + 'px';
+    tooltip.style.top = (y + 14) + 'px';
+    tooltip.classList.add('show');
+  }
+  function hideTooltip() { tooltip.classList.remove('show'); }
+
+  // ---------- KPI row ----------
+  const uniqueTotal = uniqueAccounts.length;
+  const ambiguousUnique = uniqueAccounts.filter(a => a.ambiguous).length;
+  const resolvedUnique = uniqueTotal - ambiguousUnique;
+  const totalAmount = records.reduce((s, r) => s + r.amount, 0);
+  const kpis = [
+    { label: "처리 부서 수", value: depts.length, sub: "Phase 1 배치 4건 완료" },
+    { label: "고유 계정", value: uniqueTotal + "종", sub: "공통 7 · 특정 8" },
+    { label: "확정 계정", value: resolvedUnique + "종", sub: Math.round(resolvedUnique/uniqueTotal*100) + "% 자동 확정" },
+    { label: "추가판단 필요(판정 대기)", value: ambiguousUnique + "종", sub: "회계사 확인 필요", warn: true },
+    { label: "총 검토 대상 금액", value: fmtEok(totalAmount), sub: "32건 부서-계정 인스턴스 합계" },
+  ];
+  const kpiRow = document.getElementById('kpi-row');
+  kpis.forEach(k => {
+    const tile = document.createElement('div');
+    tile.className = 'kpi-tile';
+    const label = document.createElement('div'); label.className = 'label'; label.textContent = k.label;
+    const value = document.createElement('div'); value.className = 'value' + (k.warn ? ' warn' : ''); value.textContent = k.value;
+    const sub = document.createElement('div'); sub.className = 'sub'; sub.textContent = k.sub;
+    tile.appendChild(label); tile.appendChild(value); tile.appendChild(sub);
+    kpiRow.appendChild(tile);
+  });
+
+  // ---------- 부서별 처리 현황 stacked bar (count) ----------
+  const KIND_ORDER = ["배부형", "직접귀속형", "추가판단 필요"];
+  function countsByDept(dept) {
+    const rows = records.filter(r => r.dept === dept);
+    const out = { "배부형": 0, "직접귀속형": 0, "추가판단 필요": 0 };
+    rows.forEach(r => out[kindOf(r)]++);
+    return out;
+  }
+  function amountsByDept(dept) {
+    const rows = records.filter(r => r.dept === dept);
+    const out = { "배부형": 0, "직접귀속형": 0, "추가판단 필요": 0 };
+    rows.forEach(r => out[kindOf(r)] += r.amount);
+    return out;
+  }
+
+  function renderStackedBars(containerId, tableId, valuesFn, valueFmt, unitDivisor) {
+    const container = document.getElementById(containerId);
+    const maxTotal = Math.max(...depts.map(d => {
+      const v = valuesFn(d);
+      return v["배부형"] + v["직접귀속형"] + v["추가판단 필요"];
+    }));
+    depts.forEach(dept => {
+      const v = valuesFn(dept);
+      const total = v["배부형"] + v["직접귀속형"] + v["추가판단 필요"];
+      const row = document.createElement('div');
+      row.className = 'bar-row';
+      const label = document.createElement('div'); label.className = 'row-label'; label.textContent = dept;
+      const track = document.createElement('div'); track.className = 'bar-track';
+      KIND_ORDER.forEach(kind => {
+        const val = v[kind];
+        if (val <= 0) return;
+        const seg = document.createElement('div');
+        seg.className = 'bar-seg';
+        seg.dataset.kind = kind;
+        seg.tabIndex = 0;
+        seg.style.width = (val / maxTotal * 100) + '%';
+        const segLabel = document.createElement('span');
+        segLabel.className = 'seg-label';
+        segLabel.textContent = valueFmt === 'count' ? val : (val / unitDivisor).toFixed(0);
+        seg.appendChild(segLabel);
+        function onEnter(e) {
+          showTooltip(e.clientX, e.clientY, [
+            { value: valueFmt === 'count' ? (val + '건') : fmtWon(val), label: dept + ' · ' + kind }
+          ]);
+        }
+        seg.addEventListener('mousemove', onEnter);
+        seg.addEventListener('mouseleave', hideTooltip);
+        seg.addEventListener('focus', (e) => onEnter(e));
+        seg.addEventListener('blur', hideTooltip);
+        track.appendChild(seg);
+      });
+      row.appendChild(label); row.appendChild(track);
+      container.appendChild(row);
+    });
+
+    // table view
+    const table = document.getElementById(tableId);
+    const thead = document.createElement('thead');
+    const trh = document.createElement('tr');
+    ["부서", "배부형", "직접귀속형", "추가판단 필요", "합계"].forEach(h => {
+      const th = document.createElement('th'); th.textContent = h; trh.appendChild(th);
+    });
+    thead.appendChild(trh);
+    const tbody = document.createElement('tbody');
+    depts.forEach(dept => {
+      const v = valuesFn(dept);
+      const total = v["배부형"] + v["직접귀속형"] + v["추가판단 필요"];
+      const tr = document.createElement('tr');
+      const cells = [dept,
+        valueFmt === 'count' ? v["배부형"] : fmtWon(v["배부형"]),
+        valueFmt === 'count' ? v["직접귀속형"] : fmtWon(v["직접귀속형"]),
+        valueFmt === 'count' ? v["추가판단 필요"] : fmtWon(v["추가판단 필요"]),
+        valueFmt === 'count' ? total : fmtWon(total)];
+      cells.forEach((c, i) => {
+        const td = document.createElement('td');
+        td.textContent = c;
+        if (i > 0) td.className = 'num';
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(thead); table.appendChild(tbody);
+  }
+
+  renderStackedBars('dept-bars', 'dept-bars-table', countsByDept, 'count', 1);
+  renderStackedBars('amount-bars', 'amount-bars-table', amountsByDept, 'amount', 1000000);
+
+  // ---------- 4-type 랭킹 바 ----------
+  const typeCounts = { "직접귀속형": 0, "배부형": 0, "추가판단 필요": 0 };
+  uniqueAccounts.forEach(a => { typeCounts[a.ambiguous ? "추가판단 필요" : a.four_type]++; });
+  const typeColor = { "배부형": "var(--series-1)", "직접귀속형": "var(--series-2)", "추가판단 필요": "var(--status-warning)" };
+  const rankedRows = Object.entries(typeCounts).sort((a, b) => b[1] - a[1]);
+  const maxType = Math.max(...rankedRows.map(r => r[1]));
+  const rankedContainer = document.getElementById('type-ranked');
+  rankedRows.forEach(([kind, count]) => {
+    const row = document.createElement('div'); row.className = 'ranked-row';
+    const label = document.createElement('div'); label.className = 'row-label'; label.textContent = kind;
+    const track = document.createElement('div'); track.className = 'ranked-track';
+    const fill = document.createElement('div'); fill.className = 'ranked-fill';
+    fill.style.width = (count / maxType * 100) + '%';
+    fill.style.background = typeColor[kind];
+    track.appendChild(fill);
+    const value = document.createElement('div'); value.className = 'row-value'; value.textContent = count + '종';
+    row.appendChild(label); row.appendChild(track); row.appendChild(value);
+    rankedContainer.appendChild(row);
+  });
+
+  // ---------- 추가판단 필요 계정 테이블 ----------
+  const ambiguousTable = document.getElementById('ambiguous-table');
+  const athead = document.createElement('thead');
+  const atrh = document.createElement('tr');
+  ["계정코드", "계정명", "등장 부서", "추가판단 필요 사유 요약"].forEach(h => { const th = document.createElement('th'); th.textContent = h; atrh.appendChild(th); });
+  athead.appendChild(atrh);
+  const atbody = document.createElement('tbody');
+  uniqueAccounts.filter(a => a.ambiguous).forEach(a => {
+    const tr = document.createElement('tr');
+    const tds = [a.code, a.name, a.depts.join(', ') + ' (' + a.depts.length + '개)', a.reason_short + '…'];
+    tds.forEach((v, i) => {
+      const td = document.createElement('td');
+      td.textContent = v;
+      if (i === 3) td.className = 'reason';
+      tr.appendChild(td);
+    });
+    atbody.appendChild(tr);
+  });
+  ambiguousTable.appendChild(athead); ambiguousTable.appendChild(atbody);
+
+  // ---------- 공통 계정 일관성 테이블 ----------
+  const consistencyTable = document.getElementById('consistency-table');
+  const cthead = document.createElement('thead');
+  const ctrh = document.createElement('tr');
+  ["계정명", "4-type", "등장 부서 수", "1순위 원가동인", "일관성"].forEach(h => { const th = document.createElement('th'); th.textContent = h; ctrh.appendChild(th); });
+  cthead.appendChild(ctrh);
+  const ctbody = document.createElement('tbody');
+  uniqueAccounts.filter(a => a.kind === "공통" && !a.ambiguous).forEach(a => {
+    const rows = records.filter(r => r.code === a.code);
+    const drivers = [...new Set(rows.map(r => r.driver_1st))];
+    const consistent = drivers.length === 1;
+    const tr = document.createElement('tr');
+    const nameTd = document.createElement('td'); nameTd.textContent = a.name; tr.appendChild(nameTd);
+    const typeTd = document.createElement('td');
+    const pill = document.createElement('span'); pill.className = 'pill ' + (KIND_CLASS[a.four_type] || '');
+    pill.textContent = a.four_type; typeTd.appendChild(pill); tr.appendChild(typeTd);
+    const countTd = document.createElement('td'); countTd.className = 'num'; countTd.textContent = rows.length + '개 부서'; tr.appendChild(countTd);
+    const driverTd = document.createElement('td'); driverTd.textContent = drivers.join(' / '); tr.appendChild(driverTd);
+    const consTd = document.createElement('td');
+    const cpill = document.createElement('span');
+    cpill.className = 'pill ' + (consistent ? 'pill-consistent' : 'pill-pending');
+    cpill.textContent = consistent ? '동일 재사용' : '불일치 확인 필요';
+    consTd.appendChild(cpill); tr.appendChild(consTd);
+    ctbody.appendChild(tr);
+  });
+  consistencyTable.appendChild(cthead); consistencyTable.appendChild(ctbody);
+
+  // ---------- 전체 계정 상세 (필터 가능) ----------
+  const filterRow = document.getElementById('dept-filter');
+  const detailTable = document.getElementById('detail-table');
+  let activeFilter = '전체';
+
+  function renderDetailTable() {
+    detailTable.innerHTML = '';
+    const thead = document.createElement('thead');
+    const trh = document.createElement('tr');
+    ["부서", "계정코드", "계정명", "4-type", "1순위 원가동인", "금액"].forEach(h => { const th = document.createElement('th'); th.textContent = h; trh.appendChild(th); });
+    thead.appendChild(trh);
+    const tbody = document.createElement('tbody');
+    const rows = activeFilter === '전체' ? records : records.filter(r => r.dept === activeFilter);
+    rows.forEach(r => {
+      const tr = document.createElement('tr');
+      const deptTd = document.createElement('td'); deptTd.textContent = r.dept; tr.appendChild(deptTd);
+      const codeTd = document.createElement('td'); codeTd.textContent = r.code; tr.appendChild(codeTd);
+      const nameTd = document.createElement('td'); nameTd.textContent = r.name; tr.appendChild(nameTd);
+      const typeTd = document.createElement('td');
+      if (r.ambiguous || !r.four_type) {
+        const pill = document.createElement('span'); pill.className = 'pill pill-pending'; pill.textContent = '추가판단 필요(대기)';
+        typeTd.appendChild(pill);
+      } else {
+        const pill = document.createElement('span'); pill.className = 'pill ' + (KIND_CLASS[r.four_type] || ''); pill.textContent = r.four_type;
+        typeTd.appendChild(pill);
+      }
+      tr.appendChild(typeTd);
+      const driverTd = document.createElement('td'); driverTd.textContent = r.driver_1st || '—'; tr.appendChild(driverTd);
+      const amountTd = document.createElement('td'); amountTd.className = 'num'; amountTd.textContent = fmtWon(r.amount); tr.appendChild(amountTd);
+      tbody.appendChild(tr);
+    });
+    detailTable.appendChild(thead); detailTable.appendChild(tbody);
+  }
+
+  ["전체", ...depts].forEach(d => {
+    const btn = document.createElement('button');
+    btn.className = 'filter-btn' + (d === activeFilter ? ' active' : '');
+    btn.textContent = d;
+    btn.addEventListener('click', () => {
+      activeFilter = d;
+      [...filterRow.children].forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderDetailTable();
+    });
+    filterRow.appendChild(btn);
+  });
+  renderDetailTable();
+
+  document.getElementById('generated-at').textContent = data.generated_at;
+})();
+</script>
+</body>
+</html>
