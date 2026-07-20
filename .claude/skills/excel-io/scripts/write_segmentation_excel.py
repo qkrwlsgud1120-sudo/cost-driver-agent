@@ -134,6 +134,31 @@ def _recommended_drivers(cat_state: dict) -> list:
     ]
 
 
+def _merge_specific_entries_by_category(entries: list[dict]) -> list[dict]:
+    """department_specific_categories는 부서 단위로 항목이 나뉘어 있다 — 원래 규칙 기반
+    특정 대분류는 부서가 1개뿐이라 대분류당 항목도 1개였지만, Phase 0.5 재확인에서
+    "특정전환"된 대분류는 여러 부서에 걸쳐 있어도 같은 대분류명으로 부서 수만큼 항목이
+    생긴다(예: 17개 부서 x "보험료" = 17항목). accounts_master.json의 categories[대분류]는
+    부서 무관 단일 레코드이므로, 화면에는 대분류명 기준으로 병합한 카드 하나만 보여준다 —
+    그렇지 않으면 같은 카드가 부서 수만큼 중복 렌더링되어 Streamlit 위젯 키가 충돌한다
+    (StreamlitDuplicateElementKey)."""
+    merged: dict[str, dict] = {}
+    for c in entries:
+        cat_name = c["category"]
+        entry = merged.setdefault(cat_name, {"category": cat_name, "departments": [], "sub_accounts": [], "_seen": set()})
+        depts = c.get("departments") or ([c["department"]] if c.get("department") else [])
+        for d in depts:
+            if d not in entry["departments"]:
+                entry["departments"].append(d)
+        for sa in c.get("sub_accounts", []):
+            if sa["계정코드"] not in entry["_seen"]:
+                entry["_seen"].add(sa["계정코드"])
+                entry["sub_accounts"].append(sa)
+    for entry in merged.values():
+        del entry["_seen"]
+    return list(merged.values())
+
+
 def build_confirm_data(seg: dict, master: dict) -> dict:
     categories_state = master.get("categories", {})
 
@@ -141,7 +166,9 @@ def build_confirm_data(seg: dict, master: dict) -> dict:
 
     categories = []
     for scope, seg_key in (("common", "common_categories"), ("specific", "department_specific_categories")):
-        for c in seg.get(seg_key, []):
+        raw_entries = seg.get(seg_key, [])
+        entries = _merge_specific_entries_by_category(raw_entries) if scope == "specific" else raw_entries
+        for c in entries:
             cat_name = c["category"]
             cat_state = categories_state.get(cat_name, {})
             needs_review = bool(cat_state.get("추가판단필요여부"))
