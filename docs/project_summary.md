@@ -10,9 +10,9 @@
 |---|---|
 | 제출자 | 박진형 |
 | 이메일 | parkjh_20@naver.com |
-| GitHub | 추후 반영 예정 |
+| GitHub | [qkrwlsgud1120-sudo/cost-driver-agent](https://github.com/qkrwlsgud1120-sudo/cost-driver-agent) |
 
-**배포/데모 링크:** 없음 — 로컬 실행 전용입니다 (`streamlit run streamlit_app/app.py`, `http://localhost:8642`). PwC Digital(AI 활용) 부문 인터뷰(2026-08 예정) 데모 자료로 준비 중이며, 그 전까지는 배포 URL이 없습니다.
+**배포/데모 링크:** [cost-driver-agent-kfemdr33ywdghm76v87qza.streamlit.app](https://cost-driver-agent-kfemdr33ywdghm76v87qza.streamlit.app) (Streamlit Community Cloud, 2026-07-21 배포). 배포 인스턴스는 `output/`이 git 추적 제외 대상이라 초기 업로드 대기 상태로 뜨며, Phase 1은 Claude Code 세션에서만 실행 가능하다 — 처리된 상태는 `README.md`의 스크린샷과 로컬 실행으로 확인한다. PwC Digital(AI 활용) 부문 인터뷰는 2026-08 예정이다.
 
 `[스크린샷 삽입 위치: 요약 대시보드 히어로 배너 + Phase 파이프라인 바]`
 
@@ -152,4 +152,3 @@
 문서 작성 중 아래는 리포지토리 안에서 확실한 근거를 찾지 못해 추측하지 않고 비워뒀습니다.
 
 - **대분류 도입의 이유**: `CLAUDE.md` §0-1에 "판단 단위를 계정코드에서 대분류로 바꿨다"는 사실은 명시되어 있지만, 어떤 문제를 겪고 이 결정을 내렸는지에 대한 서술은 찾지 못했습니다. 아시는 배경이 있으면 알려주시면 버전 로그에 반영하겠습니다.
-- **GitHub 링크**: 표지에 "추후 반영 예정"으로 남겨뒀습니다. 저장소가 만들어지면 알려주세요.

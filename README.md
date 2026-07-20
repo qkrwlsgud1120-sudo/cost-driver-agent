@@ -2,7 +2,7 @@
 
 손해보험사 관리회계 비용실사에서, 부서별 비용 계정을 업로드하면 **공통/특정 대분류 자동 분리 → 4-type 분류 → 원가동인(cost driver) 1~3순위 추천 → 회계사 검토·확정 → 엑셀 산출**까지 이어지는 워크플로우 도구입니다. 판단은 Claude 서브에이전트가 근거와 함께 추천하고, 최종 확정은 항상 회계사가 합니다.
 
-> 로컬 실행 전용 프로젝트입니다(배포 URL 없음). 실행 방법은 [실행 방법](#실행-방법)을 참고하세요.
+> **배포:** [cost-driver-agent-kfemdr33ywdghm76v87qza.streamlit.app](https://cost-driver-agent-kfemdr33ywdghm76v87qza.streamlit.app) (Streamlit Community Cloud). 배포 인스턴스는 `output/`이 git 추적 제외 대상이라 초기 상태(업로드 대기 화면)로 뜹니다 — Phase 1(4-type·원가동인 추천)은 Claude Code 서브에이전트 호출이 필요해 클라우드 단독으로는 재현할 수 없으니, 처리된 상태의 화면은 아래 스크린샷과 로컬 실행([실행 방법](#실행-방법))으로 확인해주세요.
 
 ---
 
