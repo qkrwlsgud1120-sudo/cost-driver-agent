@@ -736,6 +736,19 @@ def apply_phase05_verdicts(new_verdicts: list[dict]) -> None:
 
 
 def render_upload_sidebar():
+    if (SAMPLE_DATA_DIR / "accounts_master.json").exists():
+        with st.sidebar.expander("📦 샘플 데이터로 보기", expanded=False):
+            st.caption(
+                "API 키·비용 없이 실제 AI가 처리한 샘플 결과(가상 부서 20개·대분류 32건)로 "
+                "화면을 채웁니다. 지금 화면의 데이터는 output_backup_*/에 백업된 뒤 교체됩니다."
+            )
+            if st.button("샘플 데이터 불러오기", key="sidebar_load_sample"):
+                with st.spinner("샘플 데이터 불러오는 중..."):
+                    load_sample_data()
+                for key in ("loaded", "seg", "master", "data", "confirmations"):
+                    st.session_state.pop(key, None)
+                st.rerun()
+
     st.sidebar.header("📁 새 배치 업로드")
     st.sidebar.caption(
         "부서별 비용 엑셀/CSV를 여러 개 한 번에 올리고 '분석 시작'을 누르면, "
