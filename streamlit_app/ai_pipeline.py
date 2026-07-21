@@ -213,7 +213,7 @@ def llm_recheck_segment(item: dict) -> dict:
         "플래그_사유": item.get("플래그_사유"),
         "sub_accounts": item.get("sub_accounts"),
     }, ensure_ascii=False, indent=2)
-    result = _call_json(_build_recheck_system_prompt(), user_content, MODEL_RECHECK, max_tokens=2048)
+    result = _call_json(_build_recheck_system_prompt(), user_content, MODEL_RECHECK, max_tokens=8192)
     if result.get("판정") not in ("공통유지", "특정전환"):
         raise AIPipelineError(f"'{item['대분류']}' 재확인 판정이 올바르지 않습니다: {result.get('판정')!r}")
     return result
@@ -296,7 +296,7 @@ def classify_category(category: str, cat_state: dict, sub_accounts: list[dict]) 
             for sa in sub_accounts
         ],
     }, ensure_ascii=False, indent=2)
-    result = _call_json(_build_classify_system_prompt(), user_content, MODEL_CLASSIFY, max_tokens=4096)
+    result = _call_json(_build_classify_system_prompt(), user_content, MODEL_CLASSIFY, max_tokens=8192)
     result.setdefault("대분류", category)
     return result
 
@@ -360,7 +360,7 @@ def recommend_drivers(classify_record: dict, cat_state: dict, retry_feedback: st
             f"\n\n[재시도] 이전 추천이 검증에서 실패했다. 사유: {retry_feedback}\n"
             "이 문제를 반영해 다시 추천하라."
         )
-    result = _call_json(_build_recommend_system_prompt(), user_content, MODEL_RECOMMEND, max_tokens=4096)
+    result = _call_json(_build_recommend_system_prompt(), user_content, MODEL_RECOMMEND, max_tokens=8192)
     return {
         "대분류": classify_record["대분류"],
         "four_type": classify_record.get("four_type"),
@@ -412,7 +412,7 @@ def validate_recommendation(record: dict) -> dict:
         "recommended_drivers": record.get("recommended_drivers", []),
         "세부계정_설명": record.get("세부계정_설명", []),
     }, ensure_ascii=False, indent=2)
-    result = _call_json(_build_validate_system_prompt(), user_content, MODEL_VALIDATE, max_tokens=2048)
+    result = _call_json(_build_validate_system_prompt(), user_content, MODEL_VALIDATE, max_tokens=8192)
     if result.get("검증결과") not in ("통과", "실패"):
         raise AIPipelineError(f"'{record['대분류']}' 검증결과가 올바르지 않습니다: {result.get('검증결과')!r}")
     return result
