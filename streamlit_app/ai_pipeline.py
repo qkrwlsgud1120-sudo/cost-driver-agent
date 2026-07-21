@@ -37,12 +37,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 REFERENCE_DOCS_DIR = BASE_DIR / ".claude" / "skills" / "cost-driver-framework" / "references"
 KST = timezone(timedelta(hours=9))
 
-# 모델 티어 정책은 CLAUDE.md §4와 동일하게 유지한다 — 분류·추천은 판단 품질이 핵심이라
-# Opus, 검증은 형식·논리 확인 위주라 Sonnet.
-MODEL_CLASSIFY = "claude-opus-4-8"
-MODEL_RECOMMEND = "claude-opus-4-8"
+# CLAUDE.md §4의 모델 티어 정책(분류·추천=Opus)은 Claude Code 세션 안에서 오케스트레이터가
+# 직접 호출·검토하는 경로(개발 경로) 기준이다. 이 배포 경로는 다르다 — 공개 GitHub/자소서
+# 링크로 제출되어 면접관이 언제·몇 번을 누를지 전혀 통제할 수 없으므로, 비용 예측 가능성을
+# 우선해 전 단계를 Sonnet으로 고정한다. Opus 품질의 판단 결과는 이미 docs/screenshots·
+# project_summary.md에 실제 실행 결과로 남아있어 이 배포 경로가 최고 품질을 낼 필요는 없다 —
+# 라이브 버튼은 "실제로 동작한다"를 보여주는 용도다.
+MODEL_CLASSIFY = "claude-sonnet-5"
+MODEL_RECOMMEND = "claude-sonnet-5"
 MODEL_VALIDATE = "claude-sonnet-5"
-MODEL_RECHECK = "claude-opus-4-8"
+MODEL_RECHECK = "claude-sonnet-5"
 
 MAX_RECOMMEND_RETRY = 2
 
