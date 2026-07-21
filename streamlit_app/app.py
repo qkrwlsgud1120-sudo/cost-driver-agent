@@ -1396,42 +1396,20 @@ def render_llm_recheck_section(data: dict):
         "**공통유지** = 하나의 공통 대분류로 묶음 · **특정전환** = 부서별로 따로 판단."
     )
 
-    bulk_col1, bulk_col2, bulk_col3 = st.columns([1, 1, 1])
-    with bulk_col1:
-        if st.button("✅ 남은 건 일괄 공통유지", type="primary", key="bulk_common_keep"):
-            verdicts = [{
-                "대분류": item["대분류"],
-                "판정": "공통유지",
-                "사유": _default_recheck_verdict(item)["사유"],
-            } for item in pending]
-            with st.spinner("Phase 0.5 판정 반영 중..."):
-                apply_phase05_verdicts(verdicts)
-            st.rerun()
-    with bulk_col2:
-        if st.button("추천 판정 일괄 적용", key="bulk_apply_suggested"):
-            verdicts = [{
-                "대분류": item["대분류"],
-                "판정": _default_recheck_verdict(item)["판정"],
-                "사유": _default_recheck_verdict(item)["사유"],
-            } for item in pending]
-            with st.spinner("Phase 0.5 판정 반영 중..."):
-                apply_phase05_verdicts(verdicts)
-            st.rerun()
-    with bulk_col3:
-        if st.button("🤖 AI로 일괄 재확인", key="bulk_ai_recheck"):
-            if _try_start_ai_run():
-                with st.status(f"AI 재확인 중... (대상 {len(pending)}건)", expanded=True) as status:
-                    def _cb(i, total, msg):
-                        status.write(f"[{i + 1}/{total}] {msg}")
+    if st.button(f"🤖 AI 공통/특정 판정 시작 ({len(pending)}건)", type="primary", key="bulk_ai_recheck"):
+        if _try_start_ai_run():
+            with st.status(f"AI 판정 중... (대상 {len(pending)}건)", expanded=True) as status:
+                def _cb(i, total, msg):
+                    status.write(f"[{i + 1}/{total}] {msg}")
 
-                    try:
-                        ai_pipeline.run_phase05_recheck(SEG_PATH, VERDICTS_PATH, MASTER_PATH, progress_cb=_cb)
-                    except Exception as e:  # AIPipelineError뿐 아니라 예상 못한 실패도 화면을 깨뜨리지 않는다
-                        status.update(label=f"❌ 실패: {e}", state="error", expanded=True)
-                    else:
-                        status.update(label="✅ AI 재확인 완료", state="complete", expanded=False)
-                        reload_from_disk()
-                        st.rerun()
+                try:
+                    ai_pipeline.run_phase05_recheck(SEG_PATH, VERDICTS_PATH, MASTER_PATH, progress_cb=_cb)
+                except Exception as e:  # AIPipelineError뿐 아니라 예상 못한 실패도 화면을 깨뜨리지 않는다
+                    status.update(label=f"❌ 실패: {e}", state="error", expanded=True)
+                else:
+                    status.update(label="✅ AI 판정 완료", state="complete", expanded=False)
+                    reload_from_disk()
+                    st.rerun()
     _render_ai_usage_caption()
 
     for item in pending:
