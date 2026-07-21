@@ -463,7 +463,13 @@ def run_phase1_pipeline(master_path: Path, log_path: Path, progress_cb=None) -> 
     for code, acc in master.get("accounts", {}).items():
         by_category.setdefault(acc.get("대분류"), []).append({**acc, "계정코드": code})
 
-    todo = [cat for cat, state in categories_state.items() if state.get("카테고리분류상태") != "분류완료"]
+    # "추가판단필요(검토대기)"는 AI가 이미 판단해보고 사람에게 넘긴 상태다 — 입력 데이터가
+    # 바뀌지 않는 한 다시 분류해도 같은 결론이 날 뿐이라 재실행 대상에서 제외한다. 이
+    # 카테고리들은 회계사가 4-type을 직접 입력(Path 1/2)해야 해소된다.
+    todo = [
+        cat for cat, state in categories_state.items()
+        if state.get("카테고리분류상태") not in ("분류완료", "추가판단필요(검토대기)")
+    ]
     validated: list[dict] = []
     stats = {"대상": len(todo), "분류완료": 0, "추가판단필요": 0, "추천완료": 0, "검증실패_에스컬레이션": []}
 

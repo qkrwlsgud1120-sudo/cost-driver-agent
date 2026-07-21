@@ -1362,7 +1362,13 @@ def render_ai_phase1_section(data: dict):
                     st.markdown(f"- **{item['대분류']}**: {item['사유']}")
 
     categories_state = st.session_state.master.get("categories", {})
-    todo = [c for c, s in categories_state.items() if s.get("카테고리분류상태") != "분류완료"]
+    # "추가판단필요(검토대기)"는 AI가 이미 판단해보고 사람에게 넘긴 상태다 — 데이터가
+    # 바뀌지 않는 한 다시 분류해도 같은 결론이 나올 뿐이니 재실행 대상에서 제외한다.
+    # 이 카테고리들은 카드의 4-type 직접 입력(Path 1/2)으로 해소해야 한다.
+    todo = [
+        c for c, s in categories_state.items()
+        if s.get("카테고리분류상태") not in ("분류완료", "추가판단필요(검토대기)")
+    ]
     if not todo:
         return
 
