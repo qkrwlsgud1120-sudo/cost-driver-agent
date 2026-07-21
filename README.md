@@ -2,7 +2,9 @@
 
 손해보험사 관리회계 비용실사에서, 부서별 비용 계정을 업로드하면 **공통/특정 대분류 자동 분리 → 4-type 분류 → 원가동인(cost driver) 1~3순위 추천 → 회계사 검토·확정 → 엑셀 산출**까지 이어지는 워크플로우 도구입니다. 판단은 Claude 서브에이전트가 근거와 함께 추천하고, 최종 확정은 항상 회계사가 합니다.
 
-> **배포:** [cost-driver-agent-kfemdr33ywdghm76v87qza.streamlit.app](https://cost-driver-agent-kfemdr33ywdghm76v87qza.streamlit.app) (Streamlit Community Cloud). 접속하면 **📦 샘플 데이터 불러오기** 버튼으로 API 키·비용·대기 시간 없이 실제 AI가 끝까지 처리한 결과(가상 부서 20개·대분류 32건)를 바로 볼 수 있습니다. "진짜로 실시간 동작하는지"까지 확인하고 싶다면 부서 파일을 업로드하고 「전체」 탭의 **🤖 AI 분류·원가동인 추천 시작** 버튼으로 Phase 0.5~Phase 1을 Claude Code 세션 없이 이 화면에서 Anthropic API로 직접 처리해볼 수도 있습니다(선택 사항, 공개 데모 비용 보호를 위해 실행 횟수 제한 있음 — 아래 [완전 독립 구동](#완전-독립-구동) 참조).
+> **배포:** [cost-driver-agent-kfemdr33ywdghm76v87qza.streamlit.app](https://cost-driver-agent-kfemdr33ywdghm76v87qza.streamlit.app) (Streamlit Community Cloud).
+> 접속하면 **📦 샘플 데이터 불러오기** 버튼으로 API 키·비용·대기 시간 없이 실제 AI가 끝까지 처리한 결과(가상 부서 20개·대분류 32건)를 바로 볼 수 있습니다.
+> "진짜로 실시간 동작하는지"까지 확인하고 싶다면 부서 파일을 업로드하고 「전체」 탭의 **🤖 AI 분류·원가동인 추천 시작** 버튼으로 Phase 0.5~Phase 1을 Claude Code 세션 없이 이 화면에서 Anthropic API로 직접 처리해볼 수도 있습니다(선택 사항, 공개 데모 비용 보호를 위해 실행 횟수 제한 있음 — 아래 [완전 독립 구동](#완전-독립-구동) 참조).
 
 ---
 
