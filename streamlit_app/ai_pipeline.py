@@ -166,6 +166,11 @@ def _call_json(system_prompt: str, user_content: str, model: str, max_tokens: in
     except Exception as e:  # anthropic.APIError 및 네트워크 오류 등을 사용자 메시지로 통일
         raise AIPipelineError(f"Anthropic API 호출 실패: {e}")
     text = "".join(block.text for block in resp.content if getattr(block, "type", None) == "text")
+    if resp.stop_reason == "max_tokens":
+        raise AIPipelineError(
+            f"응답이 max_tokens({max_tokens}) 제한에 걸려 중간에 잘렸습니다 — JSON을 끝까지 "
+            f"받지 못했습니다. 이 호출의 max_tokens를 늘려야 합니다. 원문: {text[:800]}"
+        )
     return _extract_json(text)
 
 
@@ -208,7 +213,7 @@ def llm_recheck_segment(item: dict) -> dict:
         "플래그_사유": item.get("플래그_사유"),
         "sub_accounts": item.get("sub_accounts"),
     }, ensure_ascii=False, indent=2)
-    result = _call_json(_build_recheck_system_prompt(), user_content, MODEL_RECHECK, max_tokens=1024)
+    result = _call_json(_build_recheck_system_prompt(), user_content, MODEL_RECHECK, max_tokens=2048)
     if result.get("판정") not in ("공통유지", "특정전환"):
         raise AIPipelineError(f"'{item['대분류']}' 재확인 판정이 올바르지 않습니다: {result.get('판정')!r}")
     return result
