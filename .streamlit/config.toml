@@ -9,3 +9,10 @@ font = "sans serif"
 
 [server]
 headless = true
+# 공개 배포 시 대용량 업로드로 인한 리소스/비용 남용을 막기 위한 상한(MB).
+maxUploadSize = 20
+
+[client]
+# 공개 데모에서는 우측 상단 "Deploy"/설정 메뉴를 숨겨 방문자가 원본 코드 조작 화면에
+# 접근하지 못하게 한다(view-only). 로컬 개발 중 필요하면 일시적으로 지워도 무방하다.
+toolbarMode = "viewer"

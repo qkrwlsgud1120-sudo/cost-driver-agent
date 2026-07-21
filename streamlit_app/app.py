@@ -34,6 +34,7 @@ MASTER_PATH = OUTPUT_DIR / "accounts_master.json"
 CONFIRMED_PATH = OUTPUT_DIR / "confirmed_results.json"
 DRAFT_PATH = OUTPUT_DIR / ".streamlit_confirm_draft.json"
 VERDICTS_PATH = OUTPUT_DIR / "llm_verdicts.json"
+LOG_PATH = OUTPUT_DIR / "batch_log.json"
 SEGMENT_REQUIRED_COLUMNS = ["계정코드", "계정명", "금액"]  # 부서명은 업로드 단계에서 직접 채워 넣으므로 제외
 
 sys.path.insert(0, str(BASE_DIR / ".claude" / "skills" / "batch-tracker" / "scripts"))
@@ -55,6 +56,7 @@ from cost_nature import (  # noqa: E402
     resolve_display_nature,
     suggest_local_driver,
 )
+import ai_pipeline  # noqa: E402  (Claude Code 개입 없이 Anthropic API 직접 호출용)
 
 KST = timezone(timedelta(hours=9))
 FOUR_TYPES = ["직접귀속형", "배부형", "공통비형", "기타"]
@@ -498,7 +500,10 @@ def init_confirmations(data: dict, master: dict) -> dict:
             entry["confirmStatus"] = saved.get("확정여부") or "미확정"
             entry["confirmedDriver"] = saved.get("확정원가동인") or ""
             entry["confirmedRank"] = saved.get("확정순위")
-        if cat_item["needsReview"] and cat_state.get("four_type"):
+        # cat_state["four_type"]는 AI가 "추가판단 필요"로 남겨둔 placeholder 문자열일 수도
+        # 있다 — 그 값을 사람이 이미 확정한 4-type인 것처럼 오인식하지 않도록, 실제
+        # FOUR_TYPES 중 하나일 때만 사람 확정값으로 취급한다.
+        if cat_item["needsReview"] and cat_state.get("four_type") in FOUR_TYPES:
             entry["humanFourType"] = cat_state["four_type"]
         conf_map[f"category:{category}"] = entry
 
@@ -538,6 +543,7 @@ def persist_draft():
 
 
 def ensure_state():
+    st.session_state.setdefault("ai_run_count", 0)
     if "loaded" not in st.session_state:
         seg, master, data, amount_by_dept, amount_by_code = load_all()
         st.session_state.seg = seg
@@ -788,10 +794,17 @@ def render_upload_sidebar():
                 f"이전 분류 결과에서 재확인 대기 {summary['공통특정_추가판단필요(LLM_재확인_필요)']}건 — "
                 "「전체」 탭 상단 Phase 0.5 재확인에서 처리하세요."
             )
-        st.sidebar.info(
-            "대분류 4-type 분류·원가동인 추천(Phase 1)은 서브에이전트 호출이 필요해 이 화면에서 "
-            "자동 실행되지 않습니다. Claude Code 세션으로 돌아가 \"이 배치 처리해줘\"라고 요청하세요."
-        )
+        if ai_pipeline.is_configured():
+            st.sidebar.info(
+                "대분류 4-type 분류·원가동인 추천(Phase 1)은 「전체」 탭의 "
+                "「🤖 AI 분류·원가동인 추천 시작」 버튼으로 이 화면에서 바로 실행할 수 있습니다."
+            )
+        else:
+            st.sidebar.info(
+                "대분류 4-type 분류·원가동인 추천(Phase 1)을 이 화면에서 바로 실행하려면 "
+                "ANTHROPIC_API_KEY를 설정하세요(README 참고). 설정 후 「전체」 탭에 "
+                "「🤖 AI 분류·원가동인 추천 시작」 버튼이 나타납니다."
+            )
         st.rerun()
 
 
@@ -1269,6 +1282,94 @@ def render_category_card(cat_item: dict):
 # Tab 1: 전체
 # ---------------------------------------------------------------------------
 
+def _try_start_ai_run() -> bool:
+    """AI 실행 버튼 클릭 시 API 키·사용량 한도를 확인한다. 통과하면 카운터를 올리고 True,
+    막히면 안내 메시지를 표시하고 False를 반환한다 — 공개 배포 시 API 비용 노출 방지용."""
+    if not ai_pipeline.is_configured():
+        st.error(
+            "ANTHROPIC_API_KEY가 설정되지 않아 AI 기능을 쓸 수 없습니다. 로컬에서는 프로젝트 "
+            "루트의 `.env` 파일에, 배포 환경에서는 Streamlit Cloud 앱 설정의 Secrets에 등록하세요."
+        )
+        return False
+    blocked = ai_pipeline.check_usage_limits(st.session_state.get("ai_run_count", 0))
+    if blocked:
+        st.warning(blocked)
+        return False
+    st.session_state["ai_run_count"] = st.session_state.get("ai_run_count", 0) + 1
+    ai_pipeline.increment_daily_usage()
+    return True
+
+
+def _render_ai_usage_caption():
+    remaining_session = max(0, ai_pipeline.SESSION_RUN_LIMIT - st.session_state.get("ai_run_count", 0))
+    remaining_daily = max(0, ai_pipeline.DAILY_GLOBAL_LIMIT - ai_pipeline.read_daily_usage())
+    st.caption(
+        f"🔑 AI 실행 가능 횟수 — 이 브라우저 세션: {remaining_session}/{ai_pipeline.SESSION_RUN_LIMIT}회 · "
+        f"오늘 전체 방문자: {remaining_daily}/{ai_pipeline.DAILY_GLOBAL_LIMIT}회 "
+        "(공개 데모의 API 비용 보호를 위한 한도이며, 로컬 실행에는 적용해도 큰 의미가 없어 원하면 "
+        "ai_pipeline.py 상단 상수로 조정할 수 있습니다)"
+    )
+
+
+def render_ai_phase1_section(data: dict):
+    """Phase 1(4-type 분류 → 원가동인 추천 → 자기검증)을 Claude Code 세션 없이 이 화면에서
+    Anthropic API로 직접 실행한다. Phase 0.5(공통/특정 재확인)가 끝나야 대상이 된다."""
+    if data.get("needs_llm_recheck"):
+        return
+
+    result = st.session_state.pop("last_ai_phase1_result", None)
+    if result:
+        st.success(
+            f"🤖 AI 파이프라인 완료 — 4-type 분류 {result['분류완료']}건"
+            f"(추가판단 필요 {result['추가판단필요']}건 포함) · 원가동인 추천·검증 통과 {result['추천완료']}건"
+        )
+        if result["검증실패_에스컬레이션"]:
+            with st.expander(
+                f"⚠ 검증 실패로 보류된 대분류 {len(result['검증실패_에스컬레이션'])}건 "
+                "(재시도 2회 초과 — 회계사 확인 필요)", expanded=True,
+            ):
+                for item in result["검증실패_에스컬레이션"]:
+                    st.markdown(f"- **{item['대분류']}**: {item['사유']}")
+
+    categories_state = st.session_state.master.get("categories", {})
+    todo = [c for c, s in categories_state.items() if s.get("카테고리분류상태") != "분류완료"]
+    if not todo:
+        return
+
+    st.subheader(f"🤖 AI 분류·원가동인 추천 ({len(todo)}건 대기)")
+    st.caption(
+        "Anthropic API를 이 화면에서 직접 호출해 4-type 분류 → 원가동인 1~3순위 추천 → "
+        "자기검증까지 실행합니다. Claude Code 세션이나 개발자 개입이 필요 없습니다."
+    )
+    _render_ai_usage_caption()
+
+    if not ai_pipeline.is_configured():
+        st.info(
+            "ANTHROPIC_API_KEY가 설정되지 않았습니다. 로컬 실행 시 프로젝트 루트에 `.env` 파일을 "
+            "만들어 `ANTHROPIC_API_KEY=sk-...`를 추가하거나, Streamlit Cloud 배포라면 앱 설정의 "
+            "Secrets에 등록하세요."
+        )
+        return
+
+    if st.button(f"🤖 AI 분류·원가동인 추천 시작 ({len(todo)}건)", type="primary", key="run_ai_phase1"):
+        if not _try_start_ai_run():
+            return
+        with st.status(f"AI 파이프라인 실행 중... (대상 {len(todo)}건)", expanded=True) as status:
+            def _cb(i, total, msg):
+                status.write(f"[{i + 1}/{total}] {msg}")
+
+            try:
+                run_result = ai_pipeline.run_phase1_pipeline(MASTER_PATH, LOG_PATH, progress_cb=_cb)
+            except Exception as e:  # AIPipelineError뿐 아니라 예상 못한 실패도 화면을 깨뜨리지 않는다
+                status.update(label=f"❌ 실패: {e}", state="error", expanded=True)
+                return
+            status.update(label="✅ AI 파이프라인 완료", state="complete", expanded=False)
+
+        st.session_state["last_ai_phase1_result"] = run_result
+        reload_from_disk()
+        st.rerun()
+
+
 def _default_recheck_verdict(item: dict) -> dict:
     """Phase 0.5 재확인 대기(legacy) 대분류용 기본 판정."""
     name = item.get("대분류") or ""
@@ -1295,7 +1396,7 @@ def render_llm_recheck_section(data: dict):
         "**공통유지** = 하나의 공통 대분류로 묶음 · **특정전환** = 부서별로 따로 판단."
     )
 
-    bulk_col1, bulk_col2, _ = st.columns([1, 1, 2])
+    bulk_col1, bulk_col2, bulk_col3 = st.columns([1, 1, 1])
     with bulk_col1:
         if st.button("✅ 남은 건 일괄 공통유지", type="primary", key="bulk_common_keep"):
             verdicts = [{
@@ -1316,6 +1417,22 @@ def render_llm_recheck_section(data: dict):
             with st.spinner("Phase 0.5 판정 반영 중..."):
                 apply_phase05_verdicts(verdicts)
             st.rerun()
+    with bulk_col3:
+        if st.button("🤖 AI로 일괄 재확인", key="bulk_ai_recheck"):
+            if _try_start_ai_run():
+                with st.status(f"AI 재확인 중... (대상 {len(pending)}건)", expanded=True) as status:
+                    def _cb(i, total, msg):
+                        status.write(f"[{i + 1}/{total}] {msg}")
+
+                    try:
+                        ai_pipeline.run_phase05_recheck(SEG_PATH, VERDICTS_PATH, MASTER_PATH, progress_cb=_cb)
+                    except Exception as e:  # AIPipelineError뿐 아니라 예상 못한 실패도 화면을 깨뜨리지 않는다
+                        status.update(label=f"❌ 실패: {e}", state="error", expanded=True)
+                    else:
+                        status.update(label="✅ AI 재확인 완료", state="complete", expanded=False)
+                        reload_from_disk()
+                        st.rerun()
+    _render_ai_usage_caption()
 
     for item in pending:
         category = item["대분류"]
@@ -1424,6 +1541,7 @@ def render_overview_tab():
     categories = data["categories"]
 
     render_llm_recheck_section(data)
+    render_ai_phase1_section(data)
 
     ai_rec_count = sum(1 for c in categories if not c["needsReview"] and c.get("drivers"))
     local_rec_count = sum(1 for c in categories if not c["needsReview"] and not c.get("drivers"))
