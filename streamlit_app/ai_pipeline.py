@@ -146,12 +146,17 @@ def _extract_json(text: str):
 
 
 def _call_json(system_prompt: str, user_content: str, model: str, max_tokens: int = 4096):
+    """system_prompt는 (참조 문서 포함) 호출 유형별로 완전히 고정된 문자열이고, 카테고리별
+    가변 데이터는 전부 user_content에만 들어간다 — 그래서 시스템 프롬프트 전체를 캐싱
+    대상으로 표시할 수 있다. Phase 1 한 번 실행에 카테고리마다 분류·추천·검증 호출이
+    반복되므로, 참조 문서(약 3천 토큰)를 매번 새로 보내지 않고 caching read(약 1/10 가격)로
+    재사용해 비용을 크게 줄인다. 5분 이내 같은 system_prompt로 재호출하면 캐시가 적중한다."""
     client = get_client()
     try:
         resp = client.messages.create(
             model=model,
             max_tokens=max_tokens,
-            system=system_prompt,
+            system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
             messages=[{"role": "user", "content": user_content}],
         )
     except Exception as e:  # anthropic.APIError 및 네트워크 오류 등을 사용자 메시지로 통일
