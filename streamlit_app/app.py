@@ -27,6 +27,7 @@ import pandas as pd
 import streamlit as st
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+SAMPLE_DATA_DIR = BASE_DIR / "sample_data"
 OUTPUT_DIR = BASE_DIR / "output"
 DEPARTMENTS_DIR = BASE_DIR / "input" / "departments"
 SEG_PATH = OUTPUT_DIR / "account_segmentation.json"
@@ -650,6 +651,22 @@ def backup_and_reset() -> Path | None:
             item.unlink()
 
     return backup_dir
+
+
+def load_sample_data() -> bool:
+    """API 키·실행 없이 즉시 둘러볼 수 있도록, 이미 AI로 끝까지 처리해둔 샘플 결과
+    (sample_data/)를 output/에 복사한다. 면접관 등 제3자가 크레딧 소모나 키 등록 없이
+    실제 판단 결과를 바로 볼 수 있게 하기 위한 경로다 — Phase 0~1 재실행이 아니다."""
+    master_src = SAMPLE_DATA_DIR / "accounts_master.json"
+    seg_src = SAMPLE_DATA_DIR / "account_segmentation.json"
+    if not master_src.exists() or not seg_src.exists():
+        return False
+
+    backup_and_reset()
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    shutil.copy(master_src, MASTER_PATH)
+    shutil.copy(seg_src, SEG_PATH)
+    return True
 
 
 def save_chunks(chunks: list[dict], dept_name_by_key: dict[str, str]) -> list[str]:
@@ -1679,9 +1696,23 @@ def main():
             """,
             unsafe_allow_html=True,
         )
+        if (SAMPLE_DATA_DIR / "accounts_master.json").exists():
+            st.markdown("#### 빠르게 둘러보기")
+            st.caption(
+                "API 키나 업로드 없이, 실제로 AI(Claude)가 끝까지 처리한 샘플 결과(가상 부서 "
+                "데이터 20개 부서 · 대분류 32건)를 바로 볼 수 있습니다. 비용 소모나 대기 시간이 "
+                "전혀 없습니다."
+            )
+            if st.button("📦 샘플 데이터 불러오기", type="primary"):
+                with st.spinner("샘플 데이터 불러오는 중..."):
+                    load_sample_data()
+                st.rerun()
+            st.divider()
+
         st.info(
-            "Phase 0(계정 스캔) + Phase 0.5(공통/특정 대분류 분리)부터 실행됩니다. "
-            "이후 이 화면에서 비용 설명·동인 추천·회계사 확정을 진행할 수 있습니다."
+            "직접 업로드해서 처음부터 돌려보고 싶다면, Phase 0(계정 스캔) + Phase 0.5(공통/특정 "
+            "대분류 분리)부터 실행됩니다. 이후 이 화면에서 비용 설명·동인 추천·회계사 확정을 "
+            "진행할 수 있습니다."
         )
         st.markdown(
             '<div class="empty-state-box">📄 <strong>샘플 파일 형식 예시</strong> — 아래 4개 컬럼(계정코드/계정명/'

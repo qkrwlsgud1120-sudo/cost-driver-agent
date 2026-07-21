@@ -2,7 +2,7 @@
 
 손해보험사 관리회계 비용실사에서, 부서별 비용 계정을 업로드하면 **공통/특정 대분류 자동 분리 → 4-type 분류 → 원가동인(cost driver) 1~3순위 추천 → 회계사 검토·확정 → 엑셀 산출**까지 이어지는 워크플로우 도구입니다. 판단은 Claude 서브에이전트가 근거와 함께 추천하고, 최종 확정은 항상 회계사가 합니다.
 
-> **배포:** [cost-driver-agent-kfemdr33ywdghm76v87qza.streamlit.app](https://cost-driver-agent-kfemdr33ywdghm76v87qza.streamlit.app) (Streamlit Community Cloud). 배포 인스턴스는 `output/`이 git 추적 제외 대상이라 초기 상태(업로드 대기 화면)로 뜹니다. 부서 파일을 업로드하고 「전체」 탭의 **🤖 AI 분류·원가동인 추천 시작** 버튼을 누르면 Phase 0.5(공통/특정 재확인)~Phase 1(4-type 분류·원가동인 추천·자기검증)까지 Claude Code 세션 없이 이 화면에서 Anthropic API를 직접 호출해 끝까지 처리합니다(아래 [완전 독립 구동](#완전-독립-구동) 참조). 공개 데모라 API 비용 보호를 위해 실행 횟수를 제한하고 있으니, 처리된 상태의 화면은 아래 스크린샷으로도 바로 확인할 수 있습니다.
+> **배포:** [cost-driver-agent-kfemdr33ywdghm76v87qza.streamlit.app](https://cost-driver-agent-kfemdr33ywdghm76v87qza.streamlit.app) (Streamlit Community Cloud). 접속하면 **📦 샘플 데이터 불러오기** 버튼으로 API 키·비용·대기 시간 없이 실제 AI가 끝까지 처리한 결과(가상 부서 20개·대분류 32건)를 바로 볼 수 있습니다. "진짜로 실시간 동작하는지"까지 확인하고 싶다면 부서 파일을 업로드하고 「전체」 탭의 **🤖 AI 분류·원가동인 추천 시작** 버튼으로 Phase 0.5~Phase 1을 Claude Code 세션 없이 이 화면에서 Anthropic API로 직접 처리해볼 수도 있습니다(선택 사항, 공개 데모 비용 보호를 위해 실행 횟수 제한 있음 — 아래 [완전 독립 구동](#완전-독립-구동) 참조).
 
 ---
 
@@ -96,6 +96,7 @@ cost-driver-agent/
 │   └── phase1_apply.py        # API 키 없이 돌리는 규칙 기반 Phase 1 PoC 스크립트
 ├── input/
 │   └── departments/           # 부서별 비용 계정 원본 CSV — 가상/샘플 데이터
+├── sample_data/                # AI로 끝까지 처리한 결과 스냅샷 (샘플 데이터 불러오기 버튼용, git 추적 대상)
 ├── docs/
 │   ├── project_summary.md     # 프로젝트 상세 문서 (로드맵/한계점/설계 결정/버전 로그)
 │   ├── screenshots/           # 화면 캡처 이미지
@@ -118,16 +119,20 @@ streamlit run streamlit_app/app.py --server.port 8642
 
 **업로드 → 버튼 클릭 → 결과 확인까지 이 앱 하나로 끝납니다.** Claude Code 세션이나 개발자의 수동 개입이 필요 없습니다 — Phase 0.5의 LLM 재확인과 Phase 1(4-type 분류 → 원가동인 1~3순위 추천 → 자기검증)까지 [`ai_pipeline.py`](streamlit_app/ai_pipeline.py)가 Anthropic API를 직접 호출해 화면 안에서 순차 실행합니다.
 
+**API 키 없이 결과만 보고 싶다면**: 앱 첫 화면의 **📦 샘플 데이터 불러오기** 버튼을 누르면 됩니다. [`sample_data/`](sample_data)에 미리 담아둔, 실제로 AI가 끝까지 처리한 결과(가상 부서 20개·대분류 32건)가 즉시 로드되어 대시보드·대분류 카드·부서별 탭을 전부 정상적으로 둘러볼 수 있습니다. 비용도, 대기 시간도, 키 등록도 필요 없습니다 — 자소서에 링크를 제출해 면접관이 언제 클릭할지 알 수 없는 상황에서는 이 경로가 기본값입니다.
+
+**직접 업로드해서 실시간으로 돌려보고 싶다면** (선택 사항):
+
 1. `ANTHROPIC_API_KEY`를 준비합니다(둘 중 하나만 하면 됩니다).
    - 로컬: `.env.example`을 `.env`로 복사한 뒤 발급받은 키를 채웁니다.
    - 또는: `.streamlit/secrets.toml.example`을 같은 폴더의 `secrets.toml`로 복사해 키를 채웁니다.
    - 두 파일 모두 `.gitignore`에 등록되어 있어 실수로 커밋되지 않습니다.
 2. `streamlit run streamlit_app/app.py`로 앱을 실행하고, 사이드바에서 부서별 엑셀/CSV를 업로드한 뒤 **🚀 분석 시작**을 누릅니다 (Phase 0 + Phase 0.5 규칙 기반 1차 판별).
-3. Phase 0.5에서 규칙 기반으로 판별이 애매한 대분류가 남으면 「전체」 탭 상단에 **🤖 AI로 일괄 재확인** 버튼이 나타납니다.
+3. Phase 0.5에서 규칙 기반으로 판별이 애매한 대분류가 남으면 「전체」 탭 상단에 **🤖 AI 공통/특정 판정 시작** 버튼이 나타납니다.
 4. 「전체」 탭의 **🤖 AI 분류·원가동인 추천 시작** 버튼을 누르면 남은 모든 대분류에 대해 4-type 분류 → 원가동인 추천 → 자기검증(불합격 시 최대 2회 재시도)이 순차 실행되고, 진행 상황이 화면에 실시간으로 표시됩니다.
 5. 완료되면 대시보드·대분류 카드·부서별 탭에 AI 추천 결과가 바로 나타납니다. 검증에 계속 실패한 대분류는 화면에 사유와 함께 별도로 안내되어(에스컬레이션), 회계사가 직접 4-type·원가동인을 입력하는 기존 "추가판단 필요" 경로로 이어집니다.
 
-API 키 없이 화면 구조만 빠르게 확인하고 싶다면 `python streamlit_app/phase1_apply.py`로 규칙 기반 PoC 결과를 대신 채울 수 있습니다(실제 AI 판단이 아닌 근사치입니다).
+API 키 없이 화면 구조만 빠르게 확인하고 싶다면(위 샘플 데이터와 별개로) `python streamlit_app/phase1_apply.py`로 규칙 기반 PoC 결과를 대신 채울 수도 있습니다(실제 AI 판단이 아닌 근사치입니다).
 
 > Claude Code 세션 안에서 작업할 때는 이 직접 API 경로 대신 [`CLAUDE.md`](CLAUDE.md)에 정의된 서브에이전트 오케스트레이션(위 [두 가지 실행 경로](#두-가지-실행-경로) 참조)을 그대로 씁니다 — 둘은 서로 대체 관계가 아니라 실행 환경에 따라 갈리는 별도 경로입니다.
 
