@@ -296,7 +296,10 @@ def classify_category(category: str, cat_state: dict, sub_accounts: list[dict]) 
             for sa in sub_accounts
         ],
     }, ensure_ascii=False, indent=2)
-    result = _call_json(_build_classify_system_prompt(), user_content, MODEL_CLASSIFY, max_tokens=8192)
+    # 세부계정이 많은 대분류(예: 29개)는 세부계정_설명을 전부 채우면 8192로도 부족해
+    # 실사용 중 잘렸다(실측 9627 토큰 필요) — 여유를 두고 20000으로 상향한다. 20000은
+    # Anthropic SDK가 스트리밍 없이 허용하는 상한(약 21333) 아래라 논스트리밍 그대로 쓸 수 있다.
+    result = _call_json(_build_classify_system_prompt(), user_content, MODEL_CLASSIFY, max_tokens=20000)
     result.setdefault("대분류", category)
     return result
 
@@ -360,7 +363,9 @@ def recommend_drivers(classify_record: dict, cat_state: dict, retry_feedback: st
             f"\n\n[재시도] 이전 추천이 검증에서 실패했다. 사유: {retry_feedback}\n"
             "이 문제를 반영해 다시 추천하라."
         )
-    result = _call_json(_build_recommend_system_prompt(), user_content, MODEL_RECOMMEND, max_tokens=8192)
+    # recommend도 classify_record의 세부계정_설명 전체를 그대로 옮겨 담으므로 classify와
+    # 같은 이유로 20000이 필요하다.
+    result = _call_json(_build_recommend_system_prompt(), user_content, MODEL_RECOMMEND, max_tokens=20000)
     return {
         "대분류": classify_record["대분류"],
         "four_type": classify_record.get("four_type"),
@@ -451,10 +456,45 @@ def run_phase05_recheck(seg_path: Path, verdicts_path: Path, master_path: Path, 
     return {"처리건수": len(pending), "판정": verdicts}
 
 
+def _process_one_category(category: str, cat_state: dict, sub_accounts: list[dict]) -> dict:
+    """대분류 하나를 분류 → (필요 시) 추천 → 검증(최대 재시도)까지 끝까지 처리한다.
+    스레드 워커에서 호출되므로 progress_cb 등 Streamlit 관련 호출은 하지 않는다 — 진행
+    표시는 완료된 결과를 받은 메인 스레드가 담당한다."""
+    classify_record = classify_category(category, cat_state, sub_accounts)
+
+    if classify_record.get("추가판단필요여부"):
+        return {"kind": "추가판단필요", "record": {**classify_record, "recommended_drivers": []}}
+
+    record = recommend_drivers(classify_record, cat_state)
+    feedback = None
+    result = {"검증결과": "실패", "검증사유": "미실행"}
+    for attempt in range(MAX_RECOMMEND_RETRY + 1):
+        result = validate_recommendation(record)
+        if result["검증결과"] == "통과":
+            break
+        feedback = result["검증사유"]
+        if attempt < MAX_RECOMMEND_RETRY:
+            record = recommend_drivers(classify_record, cat_state, retry_feedback=feedback)
+
+    if result["검증결과"] != "통과":
+        return {"kind": "검증실패", "category": category, "사유": feedback}
+    return {"kind": "추천완료", "record": record}
+
+
+# Anthropic API 호출은 네트워크 대기가 대부분이라 스레드로 병렬화하면(계산량이 아니라
+# I/O 대기가 병목이라 GIL 영향이 작음) 카테고리 수만큼 순차 대기하던 시간을 크게 줄일 수
+# 있다 — Claude Code 세션에서 처리할 때와 Streamlit 직접 호출 경로의 체감 속도 차이가
+# 컸던 주된 원인이 바로 이 순차 처리였다. 동시 요청 수는 Anthropic API 레이트 리밋을
+# 고려해 보수적으로 잡는다.
+PHASE1_MAX_WORKERS = 5
+
+
 def run_phase1_pipeline(master_path: Path, log_path: Path, progress_cb=None) -> dict:
-    """분류 미완료 대분류 전체에 대해 ③ 분류 → ⑤ 추천 → ⑥ 검증(최대 재시도 2회)을 순차
-    실행하고, 통과분을 track_batch.complete()로 한 번에 병합한다."""
+    """분류 미완료 대분류 전체에 대해 ③ 분류 → ⑤ 추천 → ⑥ 검증(최대 재시도 2회)을 카테고리
+    단위로 병렬 실행하고, 통과분을 track_batch.complete()로 한 번에 병합한다. 카테고리끼리는
+    서로 참조하지 않으므로(대분류 단위 독립 판단) 병렬화해도 결과가 달라지지 않는다."""
     import track_batch  # batch-tracker 스킬 스크립트 (app.py가 sys.path에 등록해둠)
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
     with open(master_path, encoding="utf-8") as f:
         master = json.load(f)
@@ -473,42 +513,34 @@ def run_phase1_pipeline(master_path: Path, log_path: Path, progress_cb=None) -> 
     validated: list[dict] = []
     stats = {"대상": len(todo), "분류완료": 0, "추가판단필요": 0, "추천완료": 0, "검증실패_에스컬레이션": []}
 
-    for i, category in enumerate(todo):
-        cat_state = categories_state[category]
-        sub_accounts = by_category.get(category, [])
-
-        if progress_cb:
-            progress_cb(i, len(todo), f"{category} — 4-type 분류 중...")
-        classify_record = classify_category(category, cat_state, sub_accounts)
-        stats["분류완료"] += 1
-
-        if classify_record.get("추가판단필요여부"):
-            stats["추가판단필요"] += 1
-            validated.append({**classify_record, "recommended_drivers": []})
-            continue
-
-        if progress_cb:
-            progress_cb(i, len(todo), f"{category} — 원가동인 추천 중...")
-        record = recommend_drivers(classify_record, cat_state)
-
-        feedback = None
-        result = {"검증결과": "실패", "검증사유": "미실행"}
-        for attempt in range(MAX_RECOMMEND_RETRY + 1):
+    with ThreadPoolExecutor(max_workers=PHASE1_MAX_WORKERS) as pool:
+        futures = {
+            pool.submit(_process_one_category, cat, categories_state[cat], by_category.get(cat, [])): cat
+            for cat in todo
+        }
+        done = 0
+        for future in as_completed(futures):
+            category = futures[future]
+            done += 1
             if progress_cb:
-                progress_cb(i, len(todo), f"{category} — 추천 검증 중 (시도 {attempt + 1})...")
-            result = validate_recommendation(record)
-            if result["검증결과"] == "통과":
-                break
-            feedback = result["검증사유"]
-            if attempt < MAX_RECOMMEND_RETRY:
-                record = recommend_drivers(classify_record, cat_state, retry_feedback=feedback)
-
-        if result["검증결과"] != "통과":
-            stats["검증실패_에스컬레이션"].append({"대분류": category, "사유": feedback})
-            continue
-
-        stats["추천완료"] += 1
-        validated.append(record)
+                progress_cb(done - 1, len(todo), f"{category} — 처리 완료")
+            try:
+                outcome = future.result()
+            except Exception as e:  # noqa: BLE001 — 카테고리 하나의 실패로 나머지 병렬 결과까지 버리지 않는다
+                stats["분류완료"] += 1
+                stats["검증실패_에스컬레이션"].append({"대분류": category, "사유": f"처리 중 예외 발생: {e}"})
+                continue
+            if outcome["kind"] == "추가판단필요":
+                stats["분류완료"] += 1
+                stats["추가판단필요"] += 1
+                validated.append(outcome["record"])
+            elif outcome["kind"] == "검증실패":
+                stats["분류완료"] += 1
+                stats["검증실패_에스컬레이션"].append({"대분류": category, "사유": outcome["사유"]})
+            else:
+                stats["분류완료"] += 1
+                stats["추천완료"] += 1
+                validated.append(outcome["record"])
 
     if validated:
         batch_id = f"live-api-{datetime.now(KST).strftime('%Y%m%d%H%M%S')}"
