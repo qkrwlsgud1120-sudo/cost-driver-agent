@@ -130,19 +130,21 @@ Phase 0.5가 끝나면 「전체」 탭에 **🤖 AI 분류·원가동인 추천
 
 ---
 
-## 스크린샷
+## 확정 진행 화면 (확정 완료율 56% 시점)
 
-`[스크린샷 삽입 위치: 요약 대시보드]`
-![요약 대시보드](docs/screenshots/dashboard.png)
+앞의 "진행 과정"이 업로드부터 Phase 1까지의 흐름이라면, 아래는 회계사 확정이 절반 이상(56%) 진행된 실제 작동 화면입니다.
 
-`[스크린샷 삽입 위치: 대분류 확정 카드 — 비용 성격 설명 + 원가동인 추천 + 확정 버튼]`
+**1. 최종 요약 대시보드**
+![최종 요약 대시보드](docs/screenshots/dashboard.png)
+
+**2. 대분류 확정 카드 — 비용 성격 설명 + 원가동인 추천 + 확정 버튼**
 ![대분류 확정 카드](docs/screenshots/category_card.png)
 
-`[스크린샷 삽입 위치: 부서별 탭 — 확인 전용 테이블]`
+**3. 부서별 탭 — 확인 전용 테이블**
 ![부서별 탭](docs/screenshots/department_tab.png)
 
-`[스크린샷 삽입 위치: 최종 확정 엑셀 — 판단 경로/4-type/원가동인 컬럼]`
-![최종 확정 엑셀](docs/screenshots/final_excel.png)
+**4. 최종 확정 엑셀 export — 판단 경로/4-type/원가동인 컬럼**
+![최종 확정 엑셀 export](docs/screenshots/final_excel.png)
 
 ---
 
